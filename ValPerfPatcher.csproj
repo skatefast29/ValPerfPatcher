@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>11</LangVersion>
+    <AssemblyName>ValPerfPatcher</AssemblyName>
+    <RootNamespace>ValPerfPatcher</RootNamespace>
+    <Nullable>disable</Nullable>
+    <Version>1.0.0</Version>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <ValheimDir Condition="'$(ValheimDir)' == ''">C:\Program Files (x86)\Steam\steamapps\common\Valheim</ValheimDir>
+    <GaleProfile Condition="'$(GaleProfile)' == ''">$(APPDATA)\com.kesomannen.gale\valheim\profiles\Default</GaleProfile>
+    <ManagedDir>$(ValheimDir)\valheim_Data\Managed</ManagedDir>
+    <BepInExCore>$(GaleProfile)\BepInEx\core</BepInExCore>
+    <Plugins>$(GaleProfile)\BepInEx\plugins</Plugins>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="0Harmony" HintPath="$(BepInExCore)\0Harmony.dll" Private="false" />
+    <Reference Include="BepInEx" HintPath="$(BepInExCore)\BepInEx.dll" Private="false" />
+    <Reference Include="assembly_valheim" HintPath="$(ManagedDir)\assembly_valheim.dll" Private="false" />
+    <Reference Include="assembly_guiutils" HintPath="$(ManagedDir)\assembly_guiutils.dll" Private="false" />
+    <Reference Include="assembly_utils" HintPath="$(ManagedDir)\assembly_utils.dll" Private="false" />
+    <Reference Include="UnityEngine" HintPath="$(ManagedDir)\UnityEngine.dll" Private="false" />
+    <Reference Include="UnityEngine.CoreModule" HintPath="$(ManagedDir)\UnityEngine.CoreModule.dll" Private="false" />
+    <!-- Only touched when HearthBelow is installed (see HearthBelowFix). -->
+    <Reference Include="HearthBelow" HintPath="$(Plugins)\Azumatt-HearthBelow\HearthBelow.dll" Private="false" />
+  </ItemGroup>
+
+  <Target Name="DeployToGale" AfterTargets="Build" Condition="'$(Deploy)' == 'true'">
+    <MakeDir Directories="$(Plugins)\ValPerfPatcher" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(Plugins)\ValPerfPatcher" />
+  </Target>
+
+</Project>

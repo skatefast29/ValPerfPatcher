@@ -1,0 +1,11 @@
+bin/
+obj/
+dist/
+.vs/
+*.user
+*.zip
+__pycache__/
+
+# Private notes (kept locally, not published)
+CLAUDE.md
+.claude/
