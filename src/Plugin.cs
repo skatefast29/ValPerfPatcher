@@ -28,7 +28,7 @@ namespace ValPerfPatcher
     {
         public const string Guid = "valheimmods.ValPerfPatcher";
         public const string Name = "ValPerfPatcher";
-        public const string Version = "1.0.1";
+        public const string Version = "1.0.2";
 
         private Harmony _harmony;
 
