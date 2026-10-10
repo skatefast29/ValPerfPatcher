@@ -23,6 +23,7 @@ namespace ValPerfPatcher
     [BepInDependency(CreatureLevelSectorTextFix.TargetGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(RiverheimLoadFix.TargetGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(ComfortTweaksConfigFix.TargetGuid, BepInDependency.DependencyFlags.SoftDependency)]
+    [BepInDependency(ChebyshevDistanceFix.VcpGuid, BepInDependency.DependencyFlags.SoftDependency)]
     public sealed class Plugin : BaseUnityPlugin
     {
         public const string Guid = "valheimmods.ValPerfPatcher";
@@ -133,6 +134,9 @@ namespace ValPerfPatcher
             else Logger.LogWarning($"{name}: not applied - {result}");
         }
 
+        // A fix returning this (plus the other mod's name) stands down quietly: that mod already does the same job.
+        internal const string AlreadyDone = "already done by ";
+
         private void Apply(string name, string targetGuid, string description, Func<string> apply)
         {
             var enabled = Config.Bind("Fixes", name, true, description);
@@ -150,6 +154,7 @@ namespace ValPerfPatcher
             {
                 string problem = apply();
                 if (problem == null) Logger.LogInfo($"{name}: applied.");
+                else if (problem.StartsWith(AlreadyDone)) Logger.LogInfo($"{name}: {problem}, nothing to do.");
                 else Logger.LogWarning($"{name}: not applied - {problem}");
             }
             catch (Exception e)

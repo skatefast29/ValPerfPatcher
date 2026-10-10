@@ -12,9 +12,12 @@ namespace ValPerfPatcher
     /// check runs for every nearby object in the ownership pass every 2 seconds (~600 KB each time with
     /// ~12,000 objects), and for building pieces, rocks and stumps, spawn areas and object loading.
     /// This returns the same value without the array.
+    /// Valheim Community Patch 0.35 has the same fix (a rewrite of the method); when it is there, this stands down.
     /// </summary>
     internal static class ChebyshevDistanceFix
     {
+        internal const string VcpGuid = "MidnightsFX.ValheimCommunityPatch";
+
         public static string Apply(Harmony harmony)
         {
             var target = AccessTools.Method(typeof(Utils), nameof(Utils.ChebyshevDistance), new[] { typeof(Vector3), typeof(Vector3) });
@@ -23,6 +26,9 @@ namespace ValPerfPatcher
             // Only worth patching while the game still builds an array for Mathf.Max.
             if (!PatchProcessor.GetOriginalInstructions(target).Any(i => i.opcode == OpCodes.Newarr))
                 return "Utils.ChebyshevDistance no longer allocates; nothing to fix";
+            var info = Harmony.GetPatchInfo(target);
+            if (info != null && info.Transpilers.Any(p => p.owner == VcpGuid))
+                return Plugin.AlreadyDone + "Valheim Community Patch";
             harmony.Patch(target, prefix: new HarmonyMethod(typeof(ChebyshevDistanceFix), nameof(Prefix)) { priority = Priority.First });
             return null;
         }
