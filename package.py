@@ -16,21 +16,24 @@ VERSION = re.search(r'<Version>([^<]+)</Version>', open(os.path.join(ROOT, 'ValP
 
 
 def icon_png(size=256):
-    """A simple 256x256 icon: dark background with an orange frame-time bar graph."""
-    bars = [0.35, 0.55, 0.4, 0.8, 0.5, 0.95, 0.45, 0.6]
+    """A simple 256x256 icon: a teal lightning bolt on a dark background (the monitor has orange bars)."""
+    bolt = [(150, 24), (60, 142), (118, 142), (96, 232), (196, 104), (136, 104), (166, 24)]
+    bg, fg = (24, 26, 32), (40, 200, 190)
+
+    def inside(px, py):
+        hit = False
+        for (x1, y1), (x2, y2) in zip(bolt, bolt[1:] + bolt[:1]):
+            if (y1 > py) != (y2 > py) and px < x1 + (py - y1) * (x2 - x1) / (y2 - y1):
+                hit = not hit
+        return hit
+
     rows = []
     for y in range(size):
         row = bytearray([0])  # filter type 0
         for x in range(size):
-            r, g, b = 24, 26, 32
-            if 28 <= x < 228 and 40 <= y < 216:
-                i = (x - 28) // 25
-                h = int(bars[i] * 160)
-                if (x - 28) % 25 < 19 and y >= 216 - h:
-                    r, g, b = (255, 140, 40) if bars[i] < 0.9 else (235, 70, 70)
-            if y in (101, 102) and 28 <= x < 228:
-                r, g, b = 90, 200, 110  # 60 fps line
-            row += bytes((r, g, b))
+            # 4x4 samples per pixel for smooth edges
+            a = sum(inside(x + (i + 0.5) / 4, y + (j + 0.5) / 4) for i in range(4) for j in range(4)) / 16
+            row += bytes(round(bg[c] + (fg[c] - bg[c]) * a) for c in range(3))
         rows.append(bytes(row))
     raw = zlib.compress(b''.join(rows), 9)
 
