@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1
+
+- Works alongside Valheim Community Patch 0.35 and later: VCP now has its own fix for the game's distance check, so this mod's version stands down when VCP is installed (one info line in the log). Without VCP nothing changes.
+
 ## 1.0.0
 
 First public release. Each fix has its own config switch and a check that stands it down if the target code changed.
