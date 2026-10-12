@@ -29,7 +29,7 @@ namespace ValPerfPatcher
     {
         public const string Guid = "valheimmods.ValPerfPatcher";
         public const string Name = "ValPerfPatcher";
-        public const string Version = "1.0.4";
+        public const string Version = "1.0.5";
 
         private Harmony _harmony;
 
@@ -82,6 +82,10 @@ namespace ValPerfPatcher
                 "Mods that bundle LocalizationManager (Warfare, Monstrum, Wizardry, HearthBelow, AzuEPI, Comfort Tweaks and others) search the whole BepInEx folder and re-read their translation files every time any translation object is set up (some once per game translation file). Reuse each mod's already loaded text after the first time.",
                 EarlyPlugin.LocalizerResult);
 
+            Report(EarlyPlugin.BundleFix,
+                "Many mods ship LZMA-compressed asset bundles that Unity unpacks completely every time they load (RtD Ocean, More World Locations, Bestiary, Valheim Armory, OdinShip: about 8 s at every startup; More World Locations' location files whenever those locations load). For any mod, the first load converts a copy to LZ4 in the background (in BepInEx\\cache\\ValPerfPatcher, a few hundred MB); later loads use that copy, which is much faster. Same assets. Copies unused for 30 days are deleted.",
+                EarlyPlugin.BundleResult);
+
             Apply("Base game: distance check without garbage", null,
                 "The game's 'is this near the player?' distance check builds a small throwaway array on every call (about 50 bytes), and it runs thousands of times: about 600 KB every 2 seconds in the object ownership pass alone, plus building pieces, rocks, spawners and object loading. Same result, no array.",
                 () => ChebyshevDistanceFix.Apply(harmony));
@@ -133,6 +137,9 @@ namespace ValPerfPatcher
                     Logger.LogInfo($"{name}: applied ({TranslationLoadFix.CopiesPatched} copies so far" +
                                    (TranslationLoadFix.CopiesSkipped > 0 ? $", {TranslationLoadFix.CopiesSkipped} look different and were left alone" : "") + ").");
                 }
+                else if (name == EarlyPlugin.BundleFix)
+                    Logger.LogInfo($"{name}: applied ({BundleCacheFix.LoadedFromCopy} loaded from the fast copy so far" +
+                                   (BundleCacheFix.Queued > 0 ? $", {BundleCacheFix.Queued} being converted for the next launch ({BundleCacheFix.SourceMegabytes:F0} MB)" : "") + ").");
                 else Logger.LogInfo($"{name}: applied.");
             }
             else if (result == "off in config") Logger.LogInfo($"{name}: off in config.");

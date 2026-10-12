@@ -6,7 +6,7 @@
     <AssemblyName>ValPerfPatcher</AssemblyName>
     <RootNamespace>ValPerfPatcher</RootNamespace>
     <Nullable>disable</Nullable>
-    <Version>1.0.4</Version>
+    <Version>1.0.5</Version>
     <DebugType>none</DebugType>
   </PropertyGroup>
 
@@ -26,6 +26,7 @@
     <Reference Include="assembly_utils" HintPath="$(ManagedDir)\assembly_utils.dll" Private="false" />
     <Reference Include="UnityEngine" HintPath="$(ManagedDir)\UnityEngine.dll" Private="false" />
     <Reference Include="UnityEngine.CoreModule" HintPath="$(ManagedDir)\UnityEngine.CoreModule.dll" Private="false" />
+    <Reference Include="UnityEngine.AssetBundleModule" HintPath="$(ManagedDir)\UnityEngine.AssetBundleModule.dll" Private="false" />
     <!-- Only touched when HearthBelow is installed (see HearthBelowFix). -->
     <Reference Include="HearthBelow" HintPath="$(Plugins)\Azumatt-HearthBelow\HearthBelow.dll" Private="false" />
   </ItemGroup>

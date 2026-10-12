@@ -21,9 +21,10 @@ namespace ValPerfPatcher
 
         public const string VanillaFix = "Base game: read the translation table once";
         public const string LocalizerFix = "LocalizationManager mods: reuse loaded text";
+        public const string BundleFix = "Mod asset bundles: keep a fast-loading copy";
 
         // What happened to each fix, for the main plugin to report (null = applied).
-        internal static string VanillaResult = "not started", LocalizerResult = "not started";
+        internal static string VanillaResult = "not started", LocalizerResult = "not started", BundleResult = "not started";
 
         private void Awake()
         {
@@ -31,6 +32,7 @@ namespace ValPerfPatcher
             var config = ReadOnlyMainConfig();
             VanillaResult = Run(config, VanillaFix, () => TranslationLoadFix.ApplyVanilla(harmony));
             LocalizerResult = Run(config, LocalizerFix, () => TranslationLoadFix.ApplyLocalizationManagers(harmony, Logger));
+            BundleResult = Run(config, BundleFix, () => BundleCacheFix.Apply(harmony, Logger));
         }
 
         private string Run(ConfigFile config, string name, Func<string> apply)

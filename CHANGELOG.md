@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.5
+
+- New fix: faster startup (and faster loading of some mod content in the world). Many mods ship LZMA-compressed asset bundles that Unity unpacks completely every time they load. Now, for any mod, the first load converts a copy to LZ4 in the background (in `BepInEx\cache\ValPerfPatcher`), and later loads use that copy. With RtD Ocean, More World Locations, Bestiary, Valheim Armory and OdinShip: loading mods 24.8 s -> 15.7 s at startup. More World Locations' ~180 location files are covered too. The first launch after installing (or after a mod updates, or a game update that changes Unity) is as slow as before; new copies are made automatically. Same assets; copies unused for 30 days are deleted. Switch: `Mod asset bundles: keep a fast-loading copy`.
+
 ## 1.0.4
 
 - The changelog is now included in the package, so Thunderstore and Hexium show it. No code changes since 1.0.3.
