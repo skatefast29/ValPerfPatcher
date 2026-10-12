@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.7
+
+- Other players on top: no longer creates a little garbage on every map pin update while TargetPortal is installed.
+- Other players on top: if it ever hits an error, it switches itself off with one warning in the log instead of interrupting the map's pin updates.
+
 ## 1.0.6
 
 - New fix: other players' icons stay on top of the map. The map draws icons in the order they were made, so a player's icon was often hidden under pins made later (locations, mod pins, pins scrolling into view). Now other players are moved to the top on the big map and the minimap. While TargetPortal's portal map is open, its portal icons stay above the players so they can still be clicked. Switch: `Map: other players on top`.

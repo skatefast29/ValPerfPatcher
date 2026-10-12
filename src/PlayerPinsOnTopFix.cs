@@ -1,5 +1,6 @@
+using System;
 using System.Collections.Generic;
-using System.Reflection;
+using System.Linq.Expressions;
 using HarmonyLib;
 using UnityEngine;
 
@@ -21,10 +22,12 @@ namespace ValPerfPatcher
         private static AccessTools.FieldRef<Minimap, List<Minimap.PinData>> _playerPins;
         private static AccessTools.FieldRef<Minimap, List<Minimap.PinData>> _pins;
 
-        // TargetPortal.Map.Teleporting (true while its portal map is open) and its portal pin type.
-        private static FieldInfo _portalMapOpen;
-        private static FieldInfo _portalPinType;
+        // TargetPortal.Map.Teleporting (true while its portal map is open) and its portal pin type, read through
+        // compiled getters (FieldInfo.GetValue would box a value on every pin update).
+        private static Func<bool> _portalMapOpen;
+        private static Func<int> _portalPinType;
         private static bool _targetPortalLooked;
+        private static bool _failed;
 
         private static readonly List<Transform> Top = new List<Transform>();
 
@@ -58,14 +61,36 @@ namespace ValPerfPatcher
                 type == null || !type.IsStatic || type.FieldType != typeof(int))
             {
                 _log?.LogWarning("Map: other players on top: TargetPortal has changed since this fix was written; " +
-                                       "players are kept on top of its portal icons too.");
+                                 "players are kept on top of its portal icons too.");
                 return;
             }
-            _portalMapOpen = open;
-            _portalPinType = type;
+            try
+            {
+                _portalPinType = Expression.Lambda<Func<int>>(Expression.Field(null, type)).Compile();
+                _portalMapOpen = Expression.Lambda<Func<bool>>(Expression.Field(null, open)).Compile();
+            }
+            catch (Exception e)
+            {
+                _portalMapOpen = null;
+                _log?.LogWarning($"Map: other players on top: can't read TargetPortal's portal map ({e.Message}); " +
+                                 "players are kept on top of its portal icons too.");
+            }
         }
 
+        // An error here would break the map's pin update every frame, so the first one switches this fix off.
         private static void Postfix(Minimap __instance)
+        {
+            if (_failed) return;
+            try { Reorder(__instance); }
+            catch (Exception e)
+            {
+                _failed = true;
+                Top.Clear();
+                _log?.LogWarning($"Map: other players on top: switched off after an error - {e.GetType().Name}: {e.Message}");
+            }
+        }
+
+        private static void Reorder(Minimap __instance)
         {
             if (!_targetPortalLooked) FindTargetPortal();
             var root = __instance.m_mode == Minimap.MapMode.Large ? __instance.m_pinRootLarge : __instance.m_pinRootSmall;
@@ -73,8 +98,8 @@ namespace ValPerfPatcher
 
             Top.Clear();
             Add(_playerPins(__instance), root, null);
-            if (_portalMapOpen != null && (bool)_portalMapOpen.GetValue(null))
-                Add(_pins(__instance), root, (Minimap.PinType)(int)_portalPinType.GetValue(null));
+            if (_portalMapOpen != null && _portalMapOpen())
+                Add(_pins(__instance), root, (Minimap.PinType)_portalPinType());
             if (Top.Count == 0) return;
 
             // Already the last children, in this order? Then leave the layout alone.
