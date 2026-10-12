@@ -29,7 +29,7 @@ namespace ValPerfPatcher
     {
         public const string Guid = "valheimmods.ValPerfPatcher";
         public const string Name = "ValPerfPatcher";
-        public const string Version = "1.0.5";
+        public const string Version = "1.0.6";
 
         private Harmony _harmony;
 
@@ -124,6 +124,10 @@ namespace ValPerfPatcher
             Apply("Comfort Tweaks: save its settings once", ComfortTweaksConfigFix.TargetGuid,
                 "On the first world load Comfort Tweaks adds a setting for every comfort piece and fire (about 260), and BepInEx rewrites its whole config file after each one (about 1.5 s). Hold those saves and write the file once at the end. Same file.",
                 () => ComfortTweaksConfigFix.Apply(_harmony));
+
+            Apply("Map: other players on top", null,
+                "The map draws icons in the order they were made, so other players' icons often end up hidden under other pins. Keep them on top. While TargetPortal's portal map is open, its portal icons stay above the players.",
+                () => PlayerPinsOnTopFix.Apply(_harmony, Logger));
         }
 
         private void Report(string name, string description, string result)

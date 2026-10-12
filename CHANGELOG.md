@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.6
+
+- New fix: other players' icons stay on top of the map. The map draws icons in the order they were made, so a player's icon was often hidden under pins made later (locations, mod pins, pins scrolling into view). Now other players are moved to the top on the big map and the minimap. While TargetPortal's portal map is open, its portal icons stay above the players so they can still be clicked. Switch: `Map: other players on top`.
+
 ## 1.0.5
 
 - New fix: faster startup (and faster loading of some mod content in the world). Many mods ship LZMA-compressed asset bundles that Unity unpacks completely every time they load. Now, for any mod, the first load converts a copy to LZ4 in the background (in `BepInEx\cache\ValPerfPatcher`), and later loads use that copy. With RtD Ocean, More World Locations, Bestiary, Valheim Armory and OdinShip: loading mods 24.8 s -> 15.7 s at startup. More World Locations' ~180 location files are covered too. The first launch after installing (or after a mod updates, or a game update that changes Unity) is as slow as before; new copies are made automatically. Same assets; copies unused for 30 days are deleted. Switch: `Mod asset bundles: keep a fast-loading copy`.
