@@ -1,6 +1,6 @@
 # ValPerfPatcher
 
-Runtime fixes for performance hot spots found with [ValPerfMonitor](https://github.com/skatefast29/ValPerfMonitor). It patches other mods in memory at startup. It never edits their files, and each mod keeps working the same way, minus the wasted work.
+Runtime fixes for performance hot spots found with [ValPerfMonitor](https://github.com/skatefast29/ValPerfMonitor). It patches other mods in memory at startup. It never edits their files, and each mod keeps working the same way, minus the wasted work. One fix is a map quality-of-life change rather than a speed-up: other players' icons are drawn on top of other map pins.
 
 ## Fixes
 | Fix | Target mod | Problem | Change |
@@ -10,7 +10,7 @@ Runtime fixes for performance hot spots found with [ValPerfMonitor](https://gith
 | Backpack check without garbage | Adventure Backpacks 2.2.9 | Its patches on the game's ownership check and network calls read every object's name (`gameObject.name`, a new string each time) to spot its hidden backpack object: about 56 bytes on each of hundreds of checks per frame | The name is read once per object and the answer remembered |
 | Minimap level text a few times per second | Creature Level & Loot Control 5.0.6 | Rebuilds the minimap's area level text every frame (a new dictionary, text replace, number text and a copy of the level thresholds, about 0.6 KB per frame) | Rebuilt at most every 0.25 s (setting `Minimap level refresh seconds`); the first update after the minimap opens runs at once. The shown level can lag by up to that long. |
 | Name trader pins only when the map updates them | BetterMap 1.1.0 | To name the trader pins it looks up every location on the map on every frame (~0.1 ms and ~0.8 KB per frame), although the game only adds or removes location pins every 5 seconds | Runs only on the frames where the game updated those pins. Same pins, same names. |
-| Other players on top | Valheim itself (and TargetPortal 1.2.7) | The map draws icons in the order they were made, so another player's icon is often hidden under pins made after they joined (locations, mod pins, pins scrolling into view) | Other players' icons are moved to the top of the big map and minimap whenever the pins update (only when the order is wrong). While TargetPortal's portal map is open, its portal icons stay above the players. Not a performance fix; switch it off with `Map: other players on top`. |
+| Other players on top | Valheim itself (and TargetPortal 1.2.7) | The map draws icons in the order they were made, so another player's icon is often hidden under pins made after they joined (locations, mod pins, pins scrolling into view) | Other players' icons are moved to the top of the big map and minimap whenever the pins update (only when the order is wrong). While TargetPortal's portal map is open, its portal icons stay above the players (works alongside BossGatedPortals, which does the same for portal icons). Not a performance fix; switch it off with `Map: other players on top`. If it ever hits an error it switches itself off with one log warning. |
 | Reuse creature spawn entries | Mods bundling CreatureManager (Bestiary 1.2.1, Air Animals, Land Animals) | Every time an area loads, the mod takes its creatures out of the shared spawn list and builds them again from its config, with reflection per creature (about 0.35 ms per area with Bestiary) | Built once, then reused while they are still in the list and none of that mod's settings has changed. A setting change (also one synced from a server) rebuilds them at the next area, as before. |
 | No stacked copies in new areas | Mod vegetation (RtD Ocean 2.2.51) | Some mod vegetation asks for groups of plants with no spread, so the extra plants of a group land exactly on the first: invisible copies that cost as much as real ones and stay in the world. RtD Ocean's seaweed, sponges, coral stones and crops do this (about a third of its seaweed near the coast) | In newly generated areas, one plant per group. The game's own vegetation and areas already generated are not changed. |
 | Reuse gamepad button names | Jotunn 2.30.2 | `"Joy!" + name` builds a new string on about 80 input checks per frame (~2.4 KB per frame) | One cached string per button |
@@ -39,16 +39,16 @@ Runtime fixes for performance hot spots found with [ValPerfMonitor](https://gith
 
 ## Safety
 Every fix:
-- only applies when its target mod is installed (the base-game fix always applies);
+- only applies when its target mod is installed (the base-game fixes always apply);
 - checks that the target code still looks the way it was analysed, and stands down with a log warning if a mod update changed it;
-- keeps the target mod's behaviour the same;
+- keeps the target mod's behaviour the same (except `Map: other players on top`, which only changes which map icon is drawn on top);
 - can be turned off on its own in `BepInEx/config/valheimmods.ValPerfPatcher.cfg`.
 
 The startup log says which fixes were applied, for example `HearthBelow: skip idle zone sorting: applied.`
 
 ## Requirements
 - Valheim 1.0 with BepInExPack_Valheim 5.4.23 or newer.
-- Only needed where you want the speed-up. Servers and other players don't need it, and it sends nothing over the network. None of the target mods is required: fixes for mods that aren't installed do nothing.
+- Only needed on the PCs where you want the speed-up (or the map change). Servers and other players don't need it, and it sends nothing over the network. None of the target mods is required: fixes for mods that aren't installed do nothing.
 
 ## Installation
 **Gale / r2modman:** *Import → local mod* and pick the release zip. **Manual:** copy `ValPerfPatcher.dll` to `BepInEx/plugins/ValPerfPatcher/`.
@@ -71,7 +71,7 @@ python package.py
 Paths default to a Steam install and a Gale profile named "Default". Override them: `dotnet build -c Release -p:ValheimDir="D:\Games\Valheim" -p:GaleProfile="C:\path\to\profile"` (the folder that contains `BepInEx`). HearthBelow is expected at `BepInEx/plugins/Azumatt-HearthBelow/HearthBelow.dll`. It targets .NET Framework 4.8 because HearthBelow does.
 
 ## Adding a fix
-Each fix is one file in `src/` with an `Apply(Harmony)` method that returns `null` when applied or a reason when it stood down, registered in `Plugin.cs` with its own config switch. Before patching, verify every member it touches exists with the expected type; if not, return a reason instead of patching.
+Each fix is one file in `src/` with an `Apply(Harmony, ...)` method that returns `null` when applied or a reason when it stood down, registered in `Plugin.cs` with its own config switch. Before patching, verify every member it touches exists with the expected type; if not, return a reason instead of patching.
 
 ## License
 MIT, see [LICENSE](LICENSE).
