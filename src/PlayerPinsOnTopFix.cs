@@ -11,6 +11,8 @@ namespace ValPerfPatcher
     /// After every Minimap.UpdatePins this moves the other players' icons to the top of the pin layer. While
     /// TargetPortal's portal-picking map is open, its portal icons go above the players so they stay clickable.
     /// Only the drawing order changes; it is checked first and only changed when something is out of place.
+    /// BossGatedPortals 1.1.1+ also lifts TargetPortal's portal icons to the top while its portal map is open
+    /// (same postfix, same pins). Both end with the portal icons last, so whichever runs second finds them in place.
     /// </summary>
     internal static class PlayerPinsOnTopFix
     {
