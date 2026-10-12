@@ -57,5 +57,6 @@ with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
     z.writestr('manifest.json', json.dumps(manifest, indent=2))
     z.writestr('icon.png', icon_png())
     z.write(os.path.join(ROOT, 'README.md'), 'README.md')
+    z.write(os.path.join(ROOT, 'CHANGELOG.md'), 'CHANGELOG.md')
     z.write(DLL, 'plugins/ValPerfPatcher.dll')
 print(out)
