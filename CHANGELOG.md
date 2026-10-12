@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.3
+
+- New fix for BetterMap: it named the trader pins by looking up every location on the map on every frame; now only when the game updates those pins (every 5 s). BetterMap went from 0.14 to 0.03 ms and from about 1 KB to 0.3 KB of garbage per frame.
+
 ## 1.0.1
 
 - Works alongside Valheim Community Patch 0.35 and later: VCP now has its own fix for the game's distance check, so this mod's version stands down when VCP is installed (one info line in the log). Without VCP nothing changes.

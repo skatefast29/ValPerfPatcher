@@ -24,11 +24,12 @@ namespace ValPerfPatcher
     [BepInDependency(RiverheimLoadFix.TargetGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(ComfortTweaksConfigFix.TargetGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(ChebyshevDistanceFix.VcpGuid, BepInDependency.DependencyFlags.SoftDependency)]
+    [BepInDependency(BetterMapLocationPinsFix.TargetGuid, BepInDependency.DependencyFlags.SoftDependency)]
     public sealed class Plugin : BaseUnityPlugin
     {
         public const string Guid = "valheimmods.ValPerfPatcher";
         public const string Name = "ValPerfPatcher";
-        public const string Version = "1.0.2";
+        public const string Version = "1.0.3";
 
         private Harmony _harmony;
 
@@ -67,6 +68,10 @@ namespace ValPerfPatcher
             Apply("Creature Level & Loot Control: minimap level text a few times per second", CreatureLevelSectorTextFix.TargetGuid,
                 "The mod rebuilds the minimap's area level text every frame, making garbage each time. This rebuilds it at most every 'Minimap level refresh seconds'.",
                 () => CreatureLevelSectorTextFix.Apply(harmony));
+
+            Apply("BetterMap: name trader pins only when the map updates them", BetterMapLocationPinsFix.TargetGuid,
+                "BetterMap looks up every location on the map on every frame to name the trader pins, although the game only adds or removes those pins every 5 seconds (~0.1 ms and ~0.8 KB of garbage per frame). Do it only on the frames where the game updated them.",
+                () => BetterMapLocationPinsFix.Apply(harmony));
 
             // Applied by EarlyPlugin before other mods start; bound here so the switches are in this config file.
             Report(EarlyPlugin.VanillaFix,
