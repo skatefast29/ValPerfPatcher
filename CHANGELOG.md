@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.8
+
+- Minor README fixes. No code changes since 1.0.7.
+
 ## 1.0.7
 
 - Other players on top: no longer creates a little garbage on every map pin update while TargetPortal is installed.
