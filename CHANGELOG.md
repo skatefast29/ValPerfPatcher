@@ -1,8 +1,16 @@
 # Changelog
 
+## 1.0.4
+
+- The changelog is now included in the package, so Thunderstore and Hexium show it. No code changes since 1.0.3.
+
 ## 1.0.3
 
 - New fix for BetterMap: it named the trader pins by looking up every location on the map on every frame; now only when the game updates those pins (every 5 s). BetterMap went from 0.14 to 0.03 ms and from about 1 KB to 0.3 KB of garbage per frame.
+
+## 1.0.2
+
+- New icon. No code changes.
 
 ## 1.0.1
 
