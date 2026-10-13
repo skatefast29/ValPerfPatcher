@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.9
+
+- README: the fixes are now in two tables, one for Valheim, Jotunn, BepInEx and code shared by many mods, one for single mods, each sorted by size of gain. No code changes since 1.0.8.
+
 ## 1.0.8
 
 - Minor README fixes. No code changes since 1.0.7.

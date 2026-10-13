@@ -10,7 +10,8 @@ namespace ValPerfPatcher
     /// Runtime fixes for hot spots found with ValPerfMonitor. Each fix:
     ///  - only applies if the target mod is installed and the code still looks the way it was analysed
     ///    (a mod update that changes it makes the fix stand down instead of misbehaving);
-    ///  - keeps the mod's behaviour identical, it only removes wasted work or garbage;
+    ///  - keeps the mod's behaviour identical, it only removes wasted work or garbage (the map icon order is the
+    ///    one deliberate change);
     ///  - can be switched off on its own in the config.
     /// Nothing here edits other mods' files; it patches in memory at startup.
     /// </summary>
@@ -29,7 +30,7 @@ namespace ValPerfPatcher
     {
         public const string Guid = "valheimmods.ValPerfPatcher";
         public const string Name = "ValPerfPatcher";
-        public const string Version = "1.0.8";
+        public const string Version = "1.0.9";
 
         private Harmony _harmony;
 
