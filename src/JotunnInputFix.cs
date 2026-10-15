@@ -20,7 +20,7 @@ namespace ValPerfPatcher
 
         public static string Apply(Harmony harmony)
         {
-            var type = AccessTools.TypeByName("Jotunn.Managers.InputManager");
+            var type = Plugin.ModType(TargetGuid, "Jotunn.Managers.InputManager");
             if (type == null)
                 return "Jotunn's InputManager was not found";
             _replaced = 0;

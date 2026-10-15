@@ -18,7 +18,7 @@ namespace ValPerfPatcher
 
         public static string Apply(Harmony harmony)
         {
-            var type = AccessTools.TypeByName("ServerDevcommands.PermissionManager");
+            var type = Plugin.ModType(TargetGuid, "ServerDevcommands.PermissionManager");
             var method = type == null ? null : AccessTools.Method(type, "GetFeaturePermissionByHash", new[] { typeof(string), typeof(int) });
             if (method == null)
                 return "Server Devcommands' permission check has changed since this fix was written";

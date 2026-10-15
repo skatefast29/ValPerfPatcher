@@ -21,9 +21,9 @@ namespace ValPerfPatcher
 
         public static string Apply(Harmony harmony)
         {
-            var patches = AccessTools.TypeByName("BetterMap.Scripts.Pins.NamedPinPatches");
+            var patches = Plugin.ModType(TargetGuid, "BetterMap.Scripts.Pins.NamedPinPatches");
             var postfix = patches == null ? null : AccessTools.DeclaredMethod(patches, "Minimap_UpdateLocationPins_Postfix", System.Type.EmptyTypes);
-            var named = AccessTools.TypeByName("BetterMap.Scripts.Pins.NamedPins");
+            var named = Plugin.ModType(TargetGuid, "BetterMap.Scripts.Pins.NamedPins");
             var timer = AccessTools.DeclaredField(typeof(Minimap), "m_updateLocationsTimer");
             var update = AccessTools.DeclaredMethod(typeof(Minimap), "UpdateLocationPins", new[] { typeof(float) });
             if (postfix == null || !postfix.IsStatic || postfix.ReturnType != typeof(void) ||

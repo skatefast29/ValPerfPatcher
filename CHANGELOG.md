@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.10
+
+- Faster startup: the fixes for other mods now look up those mods' code in the mod's own DLL instead of searching every loaded DLL. ValPerfPatcher's own startup drops from about 1 s to well under that in a large modpack. No change to what the fixes do.
+- New fix, **Mod config saves: write each file once at startup**: BepInEx rewrites a mod's whole config file after every new setting it adds, so mods adding many settings while they start wrote their files thousands of times (4,774 saves in a 70-mod profile; RtD Ocean alone 8.5 s for its 127 KB file). Until the main menu has started, those saves are held and each file is written once. Same files. Measured: mods loading 26.3 s -> 13.3 s, launch to main menu 44 s -> 28 s.
+- New option, **World: remove stacked mod plants** (off by default, it changes the world): deletes the invisible extra copies that mod vegetation (RtD Ocean's seaweed, sponges, coral stones) left exactly on top of plants in areas generated before "no stacked copies in new areas" or on a server without it. About 2,000 such copies were loaded at one busy base. A copy goes once your game owns its area (the zones around you, so it goes as you move around; up to 50 a second); one plant stays on each spot. Never the game's own plants, pickable plants or anything built. Works on a dedicated server too: the deletion is saved by the server.
+- New fix, **Adventure Backpacks: item backpack check without garbage**: its "is this item a backpack?" check (asked for every equipped item, thousands of times a minute) made a new lambda and name string for each item that isn't a backpack, and its "is a backpack equipped?" check also built a new list. About 3 KB of garbage per check without a backpack on; now none. The answer is remembered per item type; items carrying their own backpack data still count. Same answers.
+
 ## 1.0.9
 
 - README: the fixes are now in two tables, one for Valheim, Jotunn, BepInEx and code shared by many mods, one for single mods, each sorted by size of gain. No code changes since 1.0.8.

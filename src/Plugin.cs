@@ -30,7 +30,7 @@ namespace ValPerfPatcher
     {
         public const string Guid = "valheimmods.ValPerfPatcher";
         public const string Name = "ValPerfPatcher";
-        public const string Version = "1.0.9";
+        public const string Version = "1.0.10";
 
         private Harmony _harmony;
 
@@ -62,6 +62,10 @@ namespace ValPerfPatcher
                 "Adventure Backpacks checks every object's name on every ownership check (hundreds per frame), making garbage each time. This remembers the answer per object instead.",
                 () => AdventureBackpacksProxyFix.Apply(harmony));
 
+            Apply("Adventure Backpacks: item backpack check without garbage", AdventureBackpacksProxyFix.TargetGuid,
+                "Adventure Backpacks asks whether each equipped item is a backpack many times per frame, making about 2 KB of garbage per frame with a full set of gear. This remembers the answer per item type and skips the extra list.",
+                () => AdventureBackpacksItemCheckFix.Apply(harmony));
+
             var sectorText = Config.Bind("Creature Level & Loot Control", "Minimap level refresh seconds", 0.25f,
                 new ConfigDescription("How often the minimap's area level text is rebuilt (the mod does it every frame). 0 = every frame.", new AcceptableValueRange<float>(0f, 2f)));
             CreatureLevelSectorTextFix.IntervalSeconds = sectorText.Value;
@@ -86,6 +90,10 @@ namespace ValPerfPatcher
             Report(EarlyPlugin.BundleFix,
                 "Many mods ship LZMA-compressed asset bundles that Unity unpacks completely every time they load (RtD Ocean, More World Locations, Bestiary, Valheim Armory, OdinShip: about 8 s at every startup; More World Locations' location files whenever those locations load). For any mod, the first load converts a copy to LZ4 in the background (in BepInEx\\cache\\ValPerfPatcher, a few hundred MB); later loads use that copy, which is much faster. Same assets. Copies unused for 30 days are deleted.",
                 EarlyPlugin.BundleResult);
+
+            Report(EarlyPlugin.ConfigFix,
+                "BepInEx rewrites a mod's whole config file after every new setting it adds, so a mod adding hundreds of settings while it starts writes its file hundreds of times (RtD Ocean: about 8.5 s at every startup). Until the main menu has started, hold those saves and write each file once. Same files; saves while playing are not held.",
+                EarlyPlugin.ConfigResult);
 
             Apply("Base game: distance check without garbage", null,
                 "The game's 'is this near the player?' distance check builds a small throwaway array on every call (about 50 bytes), and it runs thousands of times: about 600 KB every 2 seconds in the object ownership pass alone, plus building pieces, rocks, spawners and object loading. Same result, no array.",
@@ -126,6 +134,10 @@ namespace ValPerfPatcher
                 "On the first world load Comfort Tweaks adds a setting for every comfort piece and fire (about 260), and BepInEx rewrites its whole config file after each one (about 1.5 s). Hold those saves and write the file once at the end. Same file.",
                 () => ComfortTweaksConfigFix.Apply(_harmony));
 
+            Apply("World: remove stacked mod plants", null,
+                "Off by default: changes the world. Mod vegetation that asks for groups with no spread (RtD Ocean's seaweed and others) left invisible copies exactly on top of plants in areas generated before 'Vegetation: no stacked copies in new areas' (or generated on a server without it), about a third of the seaweed near coasts. When on, the extra copy on a spot is deleted from the world once your game owns that area, one plant stays. Never the game's own plants, pickable plants or anything built.",
+                () => StackedVegetationCleanup.Apply(_harmony, Logger), defaultOn: false);
+
             Apply("Map: other players on top", null,
                 "The map draws icons in the order they were made, so other players' icons often end up hidden under other pins. Keep them on top. While TargetPortal's portal map is open, its portal icons stay above the players.",
                 () => PlayerPinsOnTopFix.Apply(_harmony, Logger));
@@ -151,12 +163,26 @@ namespace ValPerfPatcher
             else Logger.LogWarning($"{name}: not applied - {result}");
         }
 
+        /// <summary>
+        /// A type from an installed mod, looked up in that mod's own DLL. AccessTools.TypeByName goes through every
+        /// type of every loaded assembly (0.1-0.3 s per call in a big profile); it stays as the fallback.
+        /// </summary>
+        internal static Type ModType(string guid, string fullName)
+        {
+            if (Chainloader.PluginInfos.TryGetValue(guid, out var info) && info.Instance != null)
+            {
+                var type = info.Instance.GetType().Assembly.GetType(fullName, false);
+                if (type != null) return type;
+            }
+            return AccessTools.TypeByName(fullName);
+        }
+
         // A fix returning this (plus the other mod's name) stands down quietly: that mod already does the same job.
         internal const string AlreadyDone = "already done by ";
 
-        private void Apply(string name, string targetGuid, string description, Func<string> apply)
+        private void Apply(string name, string targetGuid, string description, Func<string> apply, bool defaultOn = true)
         {
-            var enabled = Config.Bind("Fixes", name, true, description);
+            var enabled = Config.Bind("Fixes", name, defaultOn, description);
             if (!enabled.Value)
             {
                 Logger.LogInfo($"{name}: off in config.");

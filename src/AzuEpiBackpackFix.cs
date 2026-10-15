@@ -21,7 +21,7 @@ namespace ValPerfPatcher
 
         public static string Apply(Harmony harmony)
         {
-            var type = AccessTools.TypeByName(TypeName);
+            var type = Plugin.ModType(TargetGuid, TypeName);
             var method = type == null ? null : AccessTools.Method(type, "IsBackpackItem", new[] { typeof(ItemDrop.ItemData) });
             if (method == null || method.ReturnType != typeof(bool))
                 return "AzuExtendedPlayerInventory's backpack check has changed since this fix was written";

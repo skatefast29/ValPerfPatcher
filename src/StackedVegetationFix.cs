@@ -20,6 +20,8 @@ namespace ValPerfPatcher
     internal static class StackedVegetationFix
     {
         private static ManualLogSource _log;
+        /// <summary>Entries this fix changed to one per group (their original settings stacked copies).</summary>
+        internal static readonly HashSet<ZoneSystem.ZoneVegetation> Changed = new HashSet<ZoneSystem.ZoneVegetation>();
         private static ZoneSystem _checked;
         private static int _checkedCount = -1;
 
@@ -47,6 +49,7 @@ namespace ValPerfPatcher
             foreach (var veg in list)
             {
                 if (veg == null || veg.m_groupSizeMax <= 1 || veg.m_groupRadius > 0f || game.Contains(veg)) continue;
+                Changed.Add(veg);
                 veg.m_groupSizeMax = 1;
                 if (veg.m_groupSizeMin > 1) veg.m_groupSizeMin = 1;
                 names.Add(veg.m_prefab != null ? veg.m_prefab.name : veg.m_name);
@@ -56,7 +59,7 @@ namespace ValPerfPatcher
         }
 
         /// <summary>The game's own vegetation entries, as ZoneSystem.SetupLocations collects them.</summary>
-        private static HashSet<ZoneSystem.ZoneVegetation> GameVegetation()
+        internal static HashSet<ZoneSystem.ZoneVegetation> GameVegetation()
         {
             var set = new HashSet<ZoneSystem.ZoneVegetation>();
             foreach (var locations in LocationList.GetAllLocationLists())

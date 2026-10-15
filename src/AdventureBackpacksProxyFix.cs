@@ -25,7 +25,7 @@ namespace ValPerfPatcher
 
         public static string Apply(Harmony harmony)
         {
-            var outer = AccessTools.TypeByName(Outer);
+            var outer = Plugin.ModType(TargetGuid, Outer);
             if (outer == null)
                 return "Adventure Backpacks' container patches were not found";
             int patched = 0, expected = 0;

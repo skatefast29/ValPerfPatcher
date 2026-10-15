@@ -10,7 +10,7 @@ namespace ValPerfPatcher
     /// The part of the patcher that has to be in place before other mods start. BepInEx starts mods in order of
     /// their ID (after the ones they depend on), and the main plugin depends on its target mods, so it starts
     /// near the end. Mods load the game's translations while they start (Creature Level &amp; Loot Control and
-    /// Comfort Tweaks: 8 full loads, about 3 s), so the translation fix lives here, under an ID that sorts first.
+    /// Comfort Tweaks: 8 full loads, about 3 s), so the translation fix (and the config save hold, the bundle cache) lives here, under an ID that sorts first.
     /// Its switches stay in the main config file (read here, written by the main plugin).
     /// </summary>
     [BepInPlugin(Guid, Name, Plugin.Version)]
@@ -22,9 +22,11 @@ namespace ValPerfPatcher
         public const string VanillaFix = "Base game: read the translation table once";
         public const string LocalizerFix = "LocalizationManager mods: reuse loaded text";
         public const string BundleFix = "Mod asset bundles: keep a fast-loading copy";
+        public const string ConfigFix = "Mod config saves: write each file once at startup";
 
         // What happened to each fix, for the main plugin to report (null = applied).
-        internal static string VanillaResult = "not started", LocalizerResult = "not started", BundleResult = "not started";
+        internal static string VanillaResult = "not started", LocalizerResult = "not started", BundleResult = "not started",
+            ConfigResult = "not started";
 
         private void Awake()
         {
@@ -33,6 +35,7 @@ namespace ValPerfPatcher
             VanillaResult = Run(config, VanillaFix, () => TranslationLoadFix.ApplyVanilla(harmony));
             LocalizerResult = Run(config, LocalizerFix, () => TranslationLoadFix.ApplyLocalizationManagers(harmony, Logger));
             BundleResult = Run(config, BundleFix, () => BundleCacheFix.Apply(harmony, Logger));
+            ConfigResult = Run(config, ConfigFix, () => ConfigSaveHoldFix.Apply(harmony, Logger));
         }
 
         private string Run(ConfigFile config, string name, Func<string> apply)

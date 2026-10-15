@@ -53,8 +53,8 @@ namespace ValPerfPatcher
         {
             _targetPortalLooked = true;
             if (!BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey(TargetPortalGuid)) return;
-            var map = AccessTools.TypeByName("TargetPortal.Map");
-            var icon = AccessTools.TypeByName("TargetPortal.Map+AddMinimapPortalIcon");
+            var map = Plugin.ModType(TargetPortalGuid, "TargetPortal.Map");
+            var icon = Plugin.ModType(TargetPortalGuid, "TargetPortal.Map+AddMinimapPortalIcon");
             var open = map == null ? null : AccessTools.DeclaredField(map, "Teleporting");
             var type = icon == null ? null : AccessTools.DeclaredField(icon, "pinType");
             if (open == null || !open.IsStatic || open.FieldType != typeof(bool) ||

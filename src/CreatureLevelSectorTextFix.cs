@@ -22,7 +22,7 @@ namespace ValPerfPatcher
 
         public static string Apply(Harmony harmony)
         {
-            var outer = AccessTools.TypeByName("CreatureLevelControl.CreatureSector");
+            var outer = Plugin.ModType(TargetGuid, "CreatureLevelControl.CreatureSector");
             var inner = outer == null ? null : AccessTools.Inner(outer, "PatchMinimapSectorUpdate");
             var postfix = inner == null ? null : AccessTools.Method(inner, "Postfix", System.Type.EmptyTypes);
             _text = outer == null ? null : AccessTools.Field(outer, "minimapSectorText");
