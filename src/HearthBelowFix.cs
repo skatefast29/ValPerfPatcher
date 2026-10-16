@@ -18,9 +18,11 @@ namespace ValPerfPatcher
     {
         public const string TargetGuid = "Azumatt.HearthBelow";
 
-        private static Dictionary<Heightmap, VoxelZone> _zones;
-        private static AccessTools.FieldRef<VoxelZone, HashSet<Vector3Int>> _dirty;
-        private static AccessTools.FieldRef<VoxelZone, bool> _swapPending;
+        // Typed as object: a field of a HearthBelow type would make this whole assembly fail to list its types
+        // (Assembly.GetTypes, used by HarmonyX and other mods' type searches) whenever HearthBelow isn't installed.
+        private static object _zones;   // Dictionary<Heightmap, VoxelZone>
+        private static object _dirty;   // AccessTools.FieldRef<VoxelZone, HashSet<Vector3Int>>
+        private static object _swapPending; // AccessTools.FieldRef<VoxelZone, bool>
         private static Action _syncOverworldVisibility;
 
         public static string Apply(Harmony harmony)
@@ -45,14 +47,17 @@ namespace ValPerfPatcher
 
         private static bool Prefix()
         {
-            if (_zones == null || _zones.Count == 0)
+            var zones = (Dictionary<Heightmap, VoxelZone>)_zones;
+            if (zones == null || zones.Count == 0)
                 return true; // the original's cheap path (also resets its debug view)
 
-            foreach (var zone in _zones.Values)
+            var swapPending = (AccessTools.FieldRef<VoxelZone, bool>)_swapPending;
+            var dirtyRef = (AccessTools.FieldRef<VoxelZone, HashSet<Vector3Int>>)_dirty;
+            foreach (var zone in zones.Values)
             {
                 if (zone == null) continue;
-                if (_swapPending(zone)) return true;
-                var dirty = _dirty(zone);
+                if (swapPending(zone)) return true;
+                var dirty = dirtyRef(zone);
                 if (dirty != null && dirty.Count > 0) return true;
             }
 

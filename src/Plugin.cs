@@ -26,11 +26,13 @@ namespace ValPerfPatcher
     [BepInDependency(ComfortTweaksConfigFix.TargetGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(ChebyshevDistanceFix.VcpGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(BetterMapLocationPinsFix.TargetGuid, BepInDependency.DependencyFlags.SoftDependency)]
+    [BepInDependency(SeasonalWaterCacheFix.SeasonalityGuid, BepInDependency.DependencyFlags.SoftDependency)]
+    [BepInDependency(AutomaticFuelSmelterScanFix.TargetGuid, BepInDependency.DependencyFlags.SoftDependency)]
     public sealed class Plugin : BaseUnityPlugin
     {
         public const string Guid = "valheimmods.ValPerfPatcher";
         public const string Name = "ValPerfPatcher";
-        public const string Version = "1.0.10";
+        public const string Version = "1.0.11";
 
         private Harmony _harmony;
 
@@ -77,6 +79,14 @@ namespace ValPerfPatcher
             Apply("BetterMap: name trader pins only when the map updates them", BetterMapLocationPinsFix.TargetGuid,
                 "BetterMap looks up every location on the map on every frame to name the trader pins, although the game only adds or removes those pins every 5 seconds (~0.1 ms and ~0.8 KB of garbage per frame). Do it only on the frames where the game updated them.",
                 () => BetterMapLocationPinsFix.Apply(harmony));
+
+            Apply("BetterMap: forget map boats when leaving a world", BetterMapLocationPinsFix.TargetGuid,
+                "BetterMap keeps the boats and carts it shows on the map in a list that survives logging out. The game renumbers its objects for every world session, so after logging out and back in without restarting, BetterMap fails to find an old boat and logs an error on every frame. Empty that list when a world starts; BetterMap adds the boats again on its next update.",
+                () => BetterMapVehicleResetFix.Apply(harmony));
+
+            Apply("AutomaticFuel: count smelters without searching everything", AutomaticFuelSmelterScanFix.TargetGuid,
+                "Every time a smelter, kiln or furnace is created (entering a base, loading an area, the hammer's placement preview) AutomaticFuel searches every object Unity has loaded to count the smelters, about 35 ms with a big mod list. Search once per world and keep that list up to date as smelters are created and removed. Same count.",
+                () => AutomaticFuelSmelterScanFix.Apply(harmony));
 
             // Applied by EarlyPlugin before other mods start; bound here so the switches are in this config file.
             Report(EarlyPlugin.VanillaFix,
@@ -138,6 +148,10 @@ namespace ValPerfPatcher
                 "Off by default: changes the world. Mod vegetation that asks for groups with no spread (RtD Ocean's seaweed and others) left invisible copies exactly on top of plants in areas generated before 'Vegetation: no stacked copies in new areas' (or generated on a server without it), about a third of the seaweed near coasts. When on, the extra copy on a spot is deleted from the world once your game owns that area, one plant stays. Never the game's own plants, pickable plants or anything built.",
                 () => StackedVegetationCleanup.Apply(_harmony, Logger), defaultOn: false);
 
+            Apply("Seasonality with ValheimCommunityPatch: water keeps moving after a season change", ChebyshevDistanceFix.VcpGuid,
+                "ValheimCommunityPatch remembers each water area's surface look and only animates that. When Seasonality freezes or thaws the water it swaps that look, and the water you see stops moving while the waves go on: boats and fish seem to float above or sink into it until you relog. Let ValheimCommunityPatch pick up the new look right after Seasonality swaps it.",
+                () => SeasonalWaterCacheFix.Apply(_harmony));
+
             Apply("Map: other players on top", null,
                 "The map draws icons in the order they were made, so other players' icons often end up hidden under other pins. Keep them on top. While TargetPortal's portal map is open, its portal icons stay above the players.",
                 () => PlayerPinsOnTopFix.Apply(_harmony, Logger));
@@ -179,6 +193,8 @@ namespace ValPerfPatcher
 
         // A fix returning this (plus the other mod's name) stands down quietly: that mod already does the same job.
         internal const string AlreadyDone = "already done by ";
+        // A fix returning this (plus why) stands down quietly: a second mod it needs is not installed.
+        internal const string NotNeeded = "not needed: ";
 
         private void Apply(string name, string targetGuid, string description, Func<string> apply, bool defaultOn = true)
         {
@@ -198,6 +214,7 @@ namespace ValPerfPatcher
                 string problem = apply();
                 if (problem == null) Logger.LogInfo($"{name}: applied.");
                 else if (problem.StartsWith(AlreadyDone)) Logger.LogInfo($"{name}: {problem}, nothing to do.");
+                else if (problem.StartsWith(NotNeeded)) Logger.LogInfo($"{name}: {problem.Substring(NotNeeded.Length)}, nothing to do.");
                 else Logger.LogWarning($"{name}: not applied - {problem}");
             }
             catch (Exception e)

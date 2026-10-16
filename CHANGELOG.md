@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.11
+
+- New fix, **AutomaticFuel: count smelters without searching everything**: every time a smelter, kiln or furnace was created (entering a base, loading an area, the hammer's placement preview of one) AutomaticFuel searched every object Unity had loaded to count the smelters, about 35 ms each time with a big mod list. Now one full search per world, then the list is kept up to date as smelters are created and removed. Same count. Measured: 35 ms -> 0.015 ms per smelter.
+- New fix, **Seasonality with ValheimCommunityPatch: water keeps moving after a season change**: when Seasonality froze or thawed the water, Valheim Community Patch kept animating the old water look, so the water you see stopped moving while the waves went on (boats and fish looked as if they floated above or sank into it, with steps between water areas, until a relog). Valheim Community Patch now picks up the new look right after the swap. Not a performance fix.
+- New fix, **BetterMap: forget map boats when leaving a world**: after logging out and back in without restarting, BetterMap's boat markers on the map threw an error on every frame (about 11,000 in 3 minutes). Its boat list is now emptied when a world starts.
+- Fixed: with HearthBelow not installed, other mods that list every loaded type logged warnings about ValPerfPatcher ("Could not load type of field"). The HearthBelow fixes no longer declare fields of HearthBelow's types.
+
 ## 1.0.10
 
 - Faster startup: the fixes for other mods now look up those mods' code in the mod's own DLL instead of searching every loaded DLL. ValPerfPatcher's own startup drops from about 1 s to well under that in a large modpack. No change to what the fixes do.

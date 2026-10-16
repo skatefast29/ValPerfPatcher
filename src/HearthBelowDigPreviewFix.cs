@@ -30,8 +30,12 @@ namespace ValPerfPatcher
             public readonly bool[] Valid = new bool[48];
         }
 
-        private static AccessTools.FieldRef<DigProjector, Vector3[]> _ring;
-        private static AccessTools.FieldRef<DigProjector, bool[]> _valid;
+        // Typed as object so this assembly still lists its types when HearthBelow isn't installed (see HearthBelowFix).
+        private static object _ring;  // AccessTools.FieldRef<DigProjector, Vector3[]>
+        private static object _valid; // AccessTools.FieldRef<DigProjector, bool[]>
+
+        private static Vector3[] Ring(DigProjector p) => ((AccessTools.FieldRef<DigProjector, Vector3[]>)_ring)(p);
+        private static bool[] Valid(DigProjector p) => ((AccessTools.FieldRef<DigProjector, bool[]>)_valid)(p);
         // One projector in practice (the local player's); keyed by instance and ring size anyway.
         private static readonly Dictionary<(int, float), Entry> Cache = new Dictionary<(int, float), Entry>();
 
@@ -61,8 +65,8 @@ namespace ValPerfPatcher
         private static bool Prefix(DigProjector __instance, Vector3 center, Vector3 normal, Vector3 right, float scale, float probe, ref bool __result, out bool __state)
         {
             __state = false;
-            var ring = _ring(__instance);
-            var valid = _valid(__instance);
+            var ring = Ring(__instance);
+            var valid = Valid(__instance);
             if (ring == null || valid == null || ring.Length != 48 || valid.Length != 48)
                 return true;
             if (!Cache.TryGetValue((__instance.GetInstanceID(), scale), out var e) ||
@@ -78,8 +82,8 @@ namespace ValPerfPatcher
         private static void Postfix(DigProjector __instance, Vector3 center, Vector3 normal, Vector3 right, float scale, float probe, bool __result, bool __state)
         {
             if (__state) return; // served from the cache: nothing new to store
-            var ring = _ring(__instance);
-            var valid = _valid(__instance);
+            var ring = Ring(__instance);
+            var valid = Valid(__instance);
             if (ring == null || valid == null || ring.Length != 48 || valid.Length != 48)
                 return;
             var key = (__instance.GetInstanceID(), scale);
