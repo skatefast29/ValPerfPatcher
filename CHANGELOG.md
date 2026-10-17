@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.12
+
+- New fix, **Base game: free unused path-finding tiles sooner near the link limit**: Unity allows only 65,535 path-finding links, and travelling fast past coasts full of creatures (sailing, portals) could keep enough path-finding tiles loaded to reach that; after that every new link failed and the game logged an error each time (44,000 in one sailing trip), and creatures couldn't path between tiles. Once more than 45,000 links are in use, and until they are back under 40,000, tiles nobody has used for 10 s are dropped instead of after the game's 60 s. Tiles in use are never dropped; otherwise nothing changes.
+- New fixes for memory that grew with every logout and login (without restarting the game):
+  - **Seasonality: helpers added once after a relog**: Seasonality added another fall-colour helper to every tree prefab and another frozen-water helper to every water area on each world load (every tree repeated the same colour work, every water area got one more collider and material copy). Now only when there is none yet.
+  - **Creature Level & Loot Control: item data added once after a relog**: another original-item-values record was added to every item on each world load (about 12,500 objects per relog), though only the first is ever read. Now only when there is none yet.
+  - **MultiUserChest: forget old inventories when a world starts**: its slot-block list kept every inventory of every earlier world session. Emptied when a world starts.
+  - **Quick Stack: forget unloaded containers**: its container list kept every container ever seen (184 entries for 46 real ones after 3 relogs), and every quick stack walked past them. Unloaded ones are removed before each search; same containers found.
+  - Measured with ValPerfMonitor's relog test: none of these four grows per relog any more. Total memory still grows by about 270 MB per relog from things that test can't attribute yet; restarting the game after logging out still clears everything.
+
 ## 1.0.11
 
 - New fix, **AutomaticFuel: count smelters without searching everything**: every time a smelter, kiln or furnace was created (entering a base, loading an area, the hammer's placement preview of one) AutomaticFuel searched every object Unity had loaded to count the smelters, about 35 ms each time with a big mod list. Now one full search per world, then the list is kept up to date as smelters are created and removed. Same count. Measured: 35 ms -> 0.015 ms per smelter.

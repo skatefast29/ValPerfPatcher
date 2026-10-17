@@ -28,11 +28,13 @@ namespace ValPerfPatcher
     [BepInDependency(BetterMapLocationPinsFix.TargetGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(SeasonalWaterCacheFix.SeasonalityGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(AutomaticFuelSmelterScanFix.TargetGuid, BepInDependency.DependencyFlags.SoftDependency)]
+    [BepInDependency(MultiUserChestBlockResetFix.TargetGuid, BepInDependency.DependencyFlags.SoftDependency)]
+    [BepInDependency(QuickStackContainerListFix.TargetGuid, BepInDependency.DependencyFlags.SoftDependency)]
     public sealed class Plugin : BaseUnityPlugin
     {
         public const string Guid = "valheimmods.ValPerfPatcher";
         public const string Name = "ValPerfPatcher";
-        public const string Version = "1.0.11";
+        public const string Version = "1.0.12";
 
         private Harmony _harmony;
 
@@ -88,6 +90,22 @@ namespace ValPerfPatcher
                 "Every time a smelter, kiln or furnace is created (entering a base, loading an area, the hammer's placement preview) AutomaticFuel searches every object Unity has loaded to count the smelters, about 35 ms with a big mod list. Search once per world and keep that list up to date as smelters are created and removed. Same count.",
                 () => AutomaticFuelSmelterScanFix.Apply(harmony));
 
+            Apply("Seasonality: helpers added once after a relog", SeasonalWaterCacheFix.SeasonalityGuid,
+                "On every world load Seasonality adds another fall-colour helper to each tree prefab and another frozen-water helper to the area template, so after each logout and login every tree and water area carries one more (each tree repeats the same colour work, each water area gets another collider and material copy; about 12,700 more objects per relog). Add them only when the prefab has none yet, as on the first world load.",
+                () => SeasonalityRandomColorsFix.Apply(harmony));
+
+            Apply("Creature Level & Loot Control: item data added once after a relog", CreatureLevelSectorTextFix.TargetGuid,
+                "On every world load the mod adds another copy of its original-item-values record to every item (about 12,500 more objects per relog); it only ever reads the first one. Add it only when the item has none yet, as on the first world load.",
+                () => CreatureLevelItemDataFix.Apply(harmony));
+
+            Apply("MultiUserChest: forget old inventories when a world starts", MultiUserChestBlockResetFix.TargetGuid,
+                "MultiUserChest keeps a slot-block record for every inventory it has seen and never removes one, so the chests and player inventories of every earlier world session stay in memory. Empty that list when a world starts; the mod makes a fresh record whenever it needs one.",
+                () => MultiUserChestBlockResetFix.Apply(harmony));
+
+            Apply("Quick Stack: forget unloaded containers", QuickStackContainerListFix.TargetGuid,
+                "Quick Stack keeps every container it has seen in a list and only removes one when it is broken, so containers in areas you left (and in earlier world sessions) stay in the list for good and every quick stack or restock walks past them. Remove the unloaded ones just before each search. Same containers found.",
+                () => QuickStackContainerListFix.Apply(harmony));
+
             // Applied by EarlyPlugin before other mods start; bound here so the switches are in this config file.
             Report(EarlyPlugin.VanillaFix,
                 "Startup creates many English translation objects, and each one re-reads all 13 of the game's translation files (every language). Keep the words each file gives per language after the first read and add those instead. Mods' own translation hooks still run.",
@@ -116,6 +134,10 @@ namespace ValPerfPatcher
                                       new AcceptableValueRange<float>(0f, 10f)));
             StaticPhysicsThrottle.IntervalSeconds = interval.Value;
             interval.SettingChanged += (_, __) => StaticPhysicsThrottle.IntervalSeconds = interval.Value;
+            Apply("Base game: free unused path-finding tiles sooner near the link limit", null,
+                "Path-finding joins its area tiles with links, and Unity allows only 65,535. Travelling fast past coasts full of creatures (sailing, portals) can keep enough tiles loaded to reach that, after which every new link fails and the game logs an error each time. Once more than 45,000 links are in use, and until they are back under 40,000, tiles nobody has used for 10 s are dropped instead of after the game's 60 s. Tiles in use are never dropped; otherwise nothing changes.",
+                () => PathfindingLinkLimitFix.Apply(harmony, Logger));
+
             Apply("Base game: throttle static object ground checks", null,
                 "Fewer ground checks for objects that are already resting on the ground; see 'Static object ground check interval' under Base game.",
                 () => StaticPhysicsThrottle.Apply(harmony));
