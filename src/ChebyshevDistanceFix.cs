@@ -13,6 +13,8 @@ namespace ValPerfPatcher
     /// ~12,000 objects), and for building pieces, rocks and stumps, spawn areas and object loading.
     /// This returns the same value without the array.
     /// Valheim Community Patch 0.35 has the same fix (a rewrite of the method); when it is there, this stands down.
+    /// Decision (checked again for VCP 0.37.0): a tie on correctness (same answer, same comparison order); VCP's is
+    /// a little cheaper because it rewrites the method itself, where this one adds a Harmony prefix call. So VCP's runs.
     /// </summary>
     internal static class ChebyshevDistanceFix
     {
@@ -28,7 +30,7 @@ namespace ValPerfPatcher
                 return "Utils.ChebyshevDistance no longer allocates; nothing to fix";
             var info = Harmony.GetPatchInfo(target);
             if (info != null && info.Transpilers.Any(p => p.owner == VcpGuid))
-                return Plugin.AlreadyDone + "Valheim Community Patch";
+                return Plugin.AlreadyDone + "ValheimCommunityPatch " + Plugin.VersionOf(VcpGuid) + " (same result; it rewrites the method itself, a little cheaper)";
             harmony.Patch(target, prefix: new HarmonyMethod(typeof(ChebyshevDistanceFix), nameof(Prefix)) { priority = Priority.First });
             return null;
         }

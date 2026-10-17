@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.13
+
+- Fixes now step aside when another mod does the same job better. They still work without that mod or with older versions.
+  - Path-finding link limit: Valheim Community Patch 0.37 runs its own. Ours takes over if that is switched off.
+  - Water after a season change: Valheim Community Patch 0.37 fixes it itself.
+  - AutomaticFuel smelter search: AutomaticFuel 1.5.7 fixes it itself (no more "has changed" warning).
+
 ## 1.0.12
 
 - New fix, **Base game: free unused path-finding tiles sooner near the link limit**: Unity allows only 65,535 path-finding links, and travelling fast past coasts full of creatures (sailing, portals) could keep enough path-finding tiles loaded to reach that; after that every new link failed and the game logged an error each time (44,000 in one sailing trip), and creatures couldn't path between tiles. Once more than 45,000 links are in use, and until they are back under 40,000, tiles nobody has used for 10 s are dropped instead of after the game's 60 s. Tiles in use are never dropped; otherwise nothing changes.

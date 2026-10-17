@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using BepInEx;
 using BepInEx.Bootstrap;
 using BepInEx.Configuration;
@@ -34,7 +35,7 @@ namespace ValPerfPatcher
     {
         public const string Guid = "valheimmods.ValPerfPatcher";
         public const string Name = "ValPerfPatcher";
-        public const string Version = "1.0.12";
+        public const string Version = "1.0.13";
 
         private Harmony _harmony;
 
@@ -87,7 +88,7 @@ namespace ValPerfPatcher
                 () => BetterMapVehicleResetFix.Apply(harmony));
 
             Apply("AutomaticFuel: count smelters without searching everything", AutomaticFuelSmelterScanFix.TargetGuid,
-                "Every time a smelter, kiln or furnace is created (entering a base, loading an area, the hammer's placement preview) AutomaticFuel searches every object Unity has loaded to count the smelters, about 35 ms with a big mod list. Search once per world and keep that list up to date as smelters are created and removed. Same count.",
+                "Every time a smelter, kiln or furnace is created (entering a base, loading an area, the hammer's placement preview) AutomaticFuel searches every object Unity has loaded to count the smelters, about 35 ms with a big mod list. Search once per world and keep that list up to date as smelters are created and removed. Same count. AutomaticFuel 1.5.7 and later no longer searches; with it, this one steps aside.",
                 () => AutomaticFuelSmelterScanFix.Apply(harmony));
 
             Apply("Seasonality: helpers added once after a relog", SeasonalWaterCacheFix.SeasonalityGuid,
@@ -135,7 +136,7 @@ namespace ValPerfPatcher
             StaticPhysicsThrottle.IntervalSeconds = interval.Value;
             interval.SettingChanged += (_, __) => StaticPhysicsThrottle.IntervalSeconds = interval.Value;
             Apply("Base game: free unused path-finding tiles sooner near the link limit", null,
-                "Path-finding joins its area tiles with links, and Unity allows only 65,535. Travelling fast past coasts full of creatures (sailing, portals) can keep enough tiles loaded to reach that, after which every new link fails and the game logs an error each time. Once more than 45,000 links are in use, and until they are back under 40,000, tiles nobody has used for 10 s are dropped instead of after the game's 60 s. Tiles in use are never dropped; otherwise nothing changes.",
+                "Path-finding joins its area tiles with links, and Unity allows only 65,535. Travelling fast past coasts full of creatures (sailing, portals) can keep enough tiles loaded to reach that, after which every new link fails and the game logs an error each time. Once more than 45,000 links are in use, and until they are back under 40,000, tiles nobody has used for 10 s are dropped instead of after the game's 60 s. Tiles in use are never dropped; otherwise nothing changes. ValheimCommunityPatch 0.37 and later has the same fix ('Fix Pathfinding Link Limit'); while that is on, this one steps aside.",
                 () => PathfindingLinkLimitFix.Apply(harmony, Logger));
 
             Apply("Base game: throttle static object ground checks", null,
@@ -171,7 +172,7 @@ namespace ValPerfPatcher
                 () => StackedVegetationCleanup.Apply(_harmony, Logger), defaultOn: false);
 
             Apply("Seasonality with ValheimCommunityPatch: water keeps moving after a season change", ChebyshevDistanceFix.VcpGuid,
-                "ValheimCommunityPatch remembers each water area's surface look and only animates that. When Seasonality freezes or thaws the water it swaps that look, and the water you see stops moving while the waves go on: boats and fish seem to float above or sink into it until you relog. Let ValheimCommunityPatch pick up the new look right after Seasonality swaps it.",
+                "ValheimCommunityPatch remembers each water area's surface look and only animates that. When Seasonality freezes or thaws the water it swaps that look, and the water you see stops moving while the waves go on: boats and fish seem to float above or sink into it until you relog. Let ValheimCommunityPatch pick up the new look right after Seasonality swaps it. ValheimCommunityPatch 0.37 and later does this itself (better: it also redoes the water's depth and wind setup); with it, this one steps aside.",
                 () => SeasonalWaterCacheFix.Apply(_harmony));
 
             Apply("Map: other players on top", null,
@@ -201,17 +202,27 @@ namespace ValPerfPatcher
 
         /// <summary>
         /// A type from an installed mod, looked up in that mod's own DLL. AccessTools.TypeByName goes through every
-        /// type of every loaded assembly (0.1-0.3 s per call in a big profile); it stays as the fallback.
+        /// type of every loaded assembly (0.1-0.3 s per call in a big profile); it stays as the fallback unless
+        /// fallback is false (for a type that only some versions of the mod have).
         /// </summary>
-        internal static Type ModType(string guid, string fullName)
+        internal static Type ModType(string guid, string fullName, bool fallback = true)
         {
             if (Chainloader.PluginInfos.TryGetValue(guid, out var info) && info.Instance != null)
             {
                 var type = info.Instance.GetType().Assembly.GetType(fullName, false);
                 if (type != null) return type;
             }
-            return AccessTools.TypeByName(fullName);
+            return fallback ? AccessTools.TypeByName(fullName) : null;
         }
+
+        // A static or instance field declared on the type, or null. Plain reflection: AccessTools logs a warning for
+        // a field that is missing, and these checks expect some to be missing in other versions.
+        internal static FieldInfo FieldOrNull(Type type, string name) =>
+            type?.GetField(name, BindingFlags.Static | BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+
+        // An installed mod's version, for log lines.
+        internal static string VersionOf(string guid) =>
+            Chainloader.PluginInfos.TryGetValue(guid, out var info) ? info.Metadata.Version.ToString() : "?";
 
         // A fix returning this (plus the other mod's name) stands down quietly: that mod already does the same job.
         internal const string AlreadyDone = "already done by ";

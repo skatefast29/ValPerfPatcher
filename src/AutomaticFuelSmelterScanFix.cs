@@ -18,6 +18,9 @@ namespace ValPerfPatcher
     /// the same set of smelters, with the same access check. Only smelters created inactive after the world started and
     /// never woken would be missing from the count; the game and these mods don't do that. Outside a world (no
     /// ZNetScene) the original search runs.
+    /// AutomaticFuel 1.5.7 removed that search itself (the prefix became Prefix(ref Smelter) and no longer counts
+    /// smelters), which is the better fix (no work at all), so this then stands down via Plugin.AlreadyDone. Older
+    /// versions still get this fix.
     /// </summary>
     internal static class AutomaticFuelSmelterScanFix
     {
@@ -27,11 +30,15 @@ namespace ValPerfPatcher
         private static readonly HashSet<Smelter> KnownSet = new HashSet<Smelter>();
         private static ZNetScene _scannedFor;
         private static MethodInfo _find;
+        private static bool _byRef; // Prefix(ref Smelter): the argument is an address, read the smelter through it
 
         public static string Apply(Harmony harmony)
         {
             var type = Plugin.ModType(TargetGuid, "AutomaticFuel.GameClasses.Smelters+BlastFurnacePatch");
-            var prefix = type == null ? null : AccessTools.DeclaredMethod(type, "Prefix", new[] { typeof(Smelter) });
+            // Prefix(Smelter) up to 1.5.5, Prefix(ref Smelter) from 1.5.7. Plain reflection: AccessTools logs a warning for the one that is missing.
+            const BindingFlags flags = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
+            var prefix = type == null ? null : type.GetMethod("Prefix", flags, null, new[] { typeof(Smelter) }, null) ??
+                                               type.GetMethod("Prefix", flags, null, new[] { typeof(Smelter).MakeByRefType() }, null);
             var generic = AccessTools.Method(typeof(Resources), nameof(Resources.FindObjectsOfTypeAll), Type.EmptyTypes);
             if (prefix == null || !prefix.IsStatic || generic == null || !generic.IsGenericMethodDefinition)
                 return "AutomaticFuel's smelter setup has changed since this fix was written";
@@ -43,9 +50,12 @@ namespace ValPerfPatcher
             int calls = 0;
             foreach (var ci in code)
                 if (ci.Calls(_find)) calls++;
+            if (calls == 0)
+                return Plugin.AlreadyDone + "AutomaticFuel " + Plugin.VersionOf(TargetGuid) + " itself (it no longer searches for smelters)";
             if (calls != 1)
                 return $"AutomaticFuel's smelter setup now searches for smelters {calls} times instead of once";
 
+            _byRef = prefix.GetParameters()[0].ParameterType.IsByRef;
             harmony.Patch(prefix, transpiler: new HarmonyMethod(typeof(AutomaticFuelSmelterScanFix), nameof(Transpiler)));
             return null;
         }
@@ -59,6 +69,7 @@ namespace ValPerfPatcher
                 if (ci.Calls(_find))
                 {
                     yield return new CodeInstruction(OpCodes.Ldarg_0).MoveLabelsFrom(ci).MoveBlocksFrom(ci);
+                    if (_byRef) yield return new CodeInstruction(OpCodes.Ldind_Ref);
                     yield return new CodeInstruction(OpCodes.Call, replacement);
                 }
                 else yield return ci;
