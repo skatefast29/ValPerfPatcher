@@ -142,6 +142,10 @@ namespace ValPerfPatcher
             Apply("Base game: throttle static object ground checks", null,
                 "Fewer ground checks for objects that are already resting on the ground; see 'Static object ground check interval' under Base game.",
                 () => StaticPhysicsThrottle.Apply(harmony));
+
+            Apply("Base game: no log flood when standing still on ice", null,
+                "A character standing still on slippery ground is turned towards where it has been sliding. Right after moving straight up or down (a teleport into a new area, a fall) that slide can be exactly zero, and then the game writes 'Look rotation viewing vector is zero' to the log every physics step (about 50 a second) until it moves, and slowly turns it towards north. Common with Seasonality's frozen water, where everyone slips: the player standing still on the ice is enough. With no slide the character just keeps facing the way it does; anything else is unchanged.",
+                () => SlideStandStillFix.Apply(harmony, Logger));
         }
 
         // After every plugin's Awake: fixes for code bundled into mods that may load after this one.
@@ -187,6 +191,10 @@ namespace ValPerfPatcher
             Apply("Seasonality: icebergs do not fly around when they appear", SeasonalWaterCacheFix.SeasonalityGuid,
                 "In winter Seasonality places icebergs and shore ice at the water line, which with 'Water Freezes' on is also its solid ice floor, so pieces with physics start inside that floor and get flung around as they appear. Let Seasonality's ice pieces pass through its ice floor, and push them gently out of anything else they appear inside. They still float, drift and can be rammed. They only exist in winter, so nothing else changes.",
                 () => SeasonalityIceStillFix.Apply(_harmony));
+
+            Apply("Seasonality: only players slide on the ice", SeasonalWaterCacheFix.SeasonalityGuid,
+                "Seasonality makes every character on its frozen water slip, creatures included. Slipping creatures keep speeding up, can barely steer, and hits can send them far across the ice; one standing still also makes the game write a warning to the log every physics step. Keep the sliding for players (skating) and let creatures and enemies walk on the ice normally.",
+                () => SeasonalityIceGripFix.Apply(_harmony));
 
             Apply("Seasonality: season change finishes", SeasonalWaterCacheFix.SeasonalityGuid,
                 "Seasonality never takes broken shore-ice pieces off its list when they are mined or their area unloads, so the next season change fails on a piece that is gone and stops halfway: the world already looks like the new season, but the season name on the screen keeps the old one, and winter ice can keep being added to new areas. Remove the gone pieces from that list just before the season change goes through it.",

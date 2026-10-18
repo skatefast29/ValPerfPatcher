@@ -2,11 +2,10 @@
 
 ## 1.0.14
 
-- New fix, **Seasonality: fish and sea creatures stay under the ice**: in winter Seasonality turns the water into a solid floor, but fish kept jumping and swimming just under the surface, and sea creatures (serpents, sharks, dolphins, whales, from the game or any mod) swam with their backs out of the water, so they ended up on top of the ice. While the water is frozen, fish don't jump and stay at least a metre under the ice, sea creatures swim just deep enough to stay fully under it (fins included, with no ripples showing on the ice), and any found on the ice (except fish a player put down there) are put back under where the water is deep enough. Tamed or ridden creatures are left alone, and so are Necks, seals and other shore creatures (the list 'Creatures left alone by the ice fix' under Seasonality). When the water thaws, everything swims as normal. Not a performance fix.
-- New fix, **Seasonality: icebergs do not fly around when they appear**: in winter Seasonality places icebergs and shore ice at the water line, which with "Water Freezes" on is also its solid ice floor, so pieces with physics started inside that floor and were flung around as they appeared. Seasonality's ice pieces now pass through its ice floor and are pushed gently out of anything else they appear inside. They still float, drift and can be rammed. They only exist in winter, so nothing else changes. Not a performance fix.
-- New fix, **Seasonality: season change finishes**: Seasonality never took broken shore-ice pieces off its list when they were mined or their area unloaded, so the next season change failed on a piece that was gone and stopped halfway (an error in the log): the world already looked like the new season, but the season name on the screen kept the old one, and winter ice could keep being added to new areas. The gone pieces are now removed from that list just before the season change goes through it. Not a performance fix.
-- New fix, **Farming: no error for the planting preview**: every seed planted made the game rebuild the see-through planting preview, and Farming's plant hook then tried to save the farming skill on that preview, which has no save data: one NullReferenceException with a full stack trace per seed (473 in one 2.5 h session), a small stutter each time. Farming's hook is skipped for the preview only; real plants get the skill as before.
-- If one fix's setting can't be created, only that fix is skipped (with a warning in the log); before, the fixes after it were not applied either.
+- New fix, **Base game: no log flood when standing still on ice.** Standing still on slippery ice could write the same warning to the log about 50 times a second.
+- New fix, **Farming: no error for the planting preview.** Planting no longer logs an error for every seed, which also caused a small stutter each time.
+- If one fix's setting can't be created, only that fix is skipped instead of the ones after it too.
+- Small extras for Seasonality's frozen water: fish and sea creatures stay under the ice, icebergs don't get flung, creatures don't slide across it, and season changes finish.
 
 ## 1.0.13
 

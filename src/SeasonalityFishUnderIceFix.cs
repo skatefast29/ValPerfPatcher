@@ -247,13 +247,20 @@ namespace ValPerfPatcher
             if (ZoneSystem.instance.GetGroundHeight(pos) > target - 0.2f) return; // too shallow to fit under
 
             pos.y = target;
+            // Level it (keep its heading): a fish that flopped on the ice can lie at any angle, and Fish.Stop turns
+            // a straight-up or straight-down fish with LookRotation(zero), which logs a warning every physics step.
+            var forward = __instance.transform.forward;
+            forward.y = 0f;
+            var level = forward.sqrMagnitude > 1e-4f ? Quaternion.LookRotation(forward) : Quaternion.identity;
             var body = _fishBody(__instance);
             if (body != null)
             {
                 body.position = pos;
+                body.rotation = level;
                 body.linearVelocity = Vector3.zero;
+                body.angularVelocity = Vector3.zero;
             }
-            __instance.transform.position = pos;
+            __instance.transform.SetPositionAndRotation(pos, level);
             _isJumping(__instance) = false;
             _haveWaypoint(__instance) = false;
         }
