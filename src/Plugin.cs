@@ -35,7 +35,7 @@ namespace ValPerfPatcher
     {
         public const string Guid = "valheimmods.ValPerfPatcher";
         public const string Name = "ValPerfPatcher";
-        public const string Version = "1.0.13";
+        public const string Version = "1.0.14";
 
         private Harmony _harmony;
 
@@ -175,6 +175,27 @@ namespace ValPerfPatcher
                 "ValheimCommunityPatch remembers each water area's surface look and only animates that. When Seasonality freezes or thaws the water it swaps that look, and the water you see stops moving while the waves go on: boats and fish seem to float above or sink into it until you relog. Let ValheimCommunityPatch pick up the new look right after Seasonality swaps it. ValheimCommunityPatch 0.37 and later does this itself (better: it also redoes the water's depth and wind setup); with it, this one steps aside.",
                 () => SeasonalWaterCacheFix.Apply(_harmony));
 
+            var leftAlone = Config.Bind("Seasonality", "Creatures left alone by the ice fix",
+                "Neck, Seal, Seal_Pup, Neck_RtD, NeckSummon_RtD",
+                "Creatures (prefab names, comma separated) that 'Seasonality: fish and sea creatures stay under the ice' never moves under the ice: amphibious ones that also live on shore, which may walk on the ice.");
+            SeasonalityFishUnderIceFix.SetLeftAlone(leftAlone.Value);
+            leftAlone.SettingChanged += (_, __) => SeasonalityFishUnderIceFix.SetLeftAlone(leftAlone.Value);
+            Apply("Seasonality: fish and sea creatures stay under the ice", SeasonalWaterCacheFix.SeasonalityGuid,
+                "In winter Seasonality freezes the water into a solid floor, but fish keep jumping and swimming just under the surface, and sea creatures (serpents, sharks, dolphins, whales, from the game or any mod) swim with their backs out of the water, so they end up on top of the ice. While the water is frozen, fish don't jump and swim at least a metre under the ice, sea creatures swim just deep enough to stay fully under it (fins included, with no ripples showing on the ice), and any found on the ice (except fish a player put down there) are put back under (where the water is deep enough). Tamed or ridden creatures are left alone, and so are Necks, seals and other shore creatures (the list 'Creatures left alone by the ice fix' under Seasonality). When the water thaws, everything swims as normal.",
+                () => SeasonalityFishUnderIceFix.Apply(_harmony));
+
+            Apply("Seasonality: icebergs do not fly around when they appear", SeasonalWaterCacheFix.SeasonalityGuid,
+                "In winter Seasonality places icebergs and shore ice at the water line, which with 'Water Freezes' on is also its solid ice floor, so pieces with physics start inside that floor and get flung around as they appear. Let Seasonality's ice pieces pass through its ice floor, and push them gently out of anything else they appear inside. They still float, drift and can be rammed. They only exist in winter, so nothing else changes.",
+                () => SeasonalityIceStillFix.Apply(_harmony));
+
+            Apply("Seasonality: season change finishes", SeasonalWaterCacheFix.SeasonalityGuid,
+                "Seasonality never takes broken shore-ice pieces off its list when they are mined or their area unloads, so the next season change fails on a piece that is gone and stops halfway: the world already looks like the new season, but the season name on the screen keeps the old one, and winter ice can keep being added to new areas. Remove the gone pieces from that list just before the season change goes through it.",
+                () => SeasonalitySeasonChangeFix.Apply(_harmony));
+
+            Apply("Farming: no error for the planting preview", FarmingGhostPlantFix.TargetGuid,
+                "Every seed you plant makes the game rebuild the see-through planting preview, and Farming's plant hook then tries to save your farming skill on that preview, which can't hold it: one error with a full stack trace in the log per seed (473 in one 2.5 h session), a small stutter each time. Skip Farming's hook for the preview only; real plants get your skill as before.",
+                () => FarmingGhostPlantFix.Apply(_harmony));
+
             Apply("Map: other players on top", null,
                 "The map draws icons in the order they were made, so other players' icons often end up hidden under other pins. Keep them on top. While TargetPortal's portal map is open, its portal icons stay above the players.",
                 () => PlayerPinsOnTopFix.Apply(_harmony, Logger));
@@ -231,7 +252,17 @@ namespace ValPerfPatcher
 
         private void Apply(string name, string targetGuid, string description, Func<string> apply, bool defaultOn = true)
         {
-            var enabled = Config.Bind("Fixes", name, defaultOn, description);
+            ConfigEntry<bool> enabled;
+            try
+            {
+                enabled = Config.Bind("Fixes", name, defaultOn, description);
+            }
+            catch (Exception e)
+            {
+                // One bad entry (e.g. a character BepInEx refuses in the name) must not stop the fixes after it.
+                Logger.LogWarning($"{name}: not applied - its config entry could not be made ({e.Message})");
+                return;
+            }
             if (!enabled.Value)
             {
                 Logger.LogInfo($"{name}: off in config.");
