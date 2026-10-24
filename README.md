@@ -1,6 +1,6 @@
 # ValPerfPatcher
 
-Runtime fixes for performance hot spots found with [ValPerfMonitor](https://github.com/skatefast29/ValPerfMonitor). It patches other mods in memory at startup. It never edits their files, and each mod keeps working the same way, minus the wasted work. A few fixes are not speed-ups: the map icon order, BetterMap errors after a relog, and the small extras below.
+Runtime fixes for performance hot spots found with [ValPerfMonitor](https://github.com/skatefast29/ValPerfMonitor). It patches other mods in memory at startup. It never edits their files, and each mod keeps working the same way, minus the wasted work. A few fixes are not speed-ups: the map icon order, BetterMap errors after a relog, and a few that only remove glitches and errors.
 
 ## Fixes
 Each table is sorted by size of gain, biggest first.
