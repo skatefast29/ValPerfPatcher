@@ -14,6 +14,8 @@ namespace ValPerfPatcher
     /// but SeasonalIce.UpdateZoneVeg (the winter ice stays in the list of things new areas grow) and
     /// SeasonSE.UpdateStatus (the season name on the HUD) never run.
     /// This drops the gone pieces from the list just before UpdateAll walks it.
+    /// 3.8.5 checks m_nview before Destroy (no exception any more) but still never removes pieces, so the list keeps
+    /// growing for the whole session; this still keeps it to the pieces that exist.
     /// </summary>
     internal static class SeasonalitySeasonChangeFix
     {

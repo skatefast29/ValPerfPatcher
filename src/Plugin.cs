@@ -35,7 +35,7 @@ namespace ValPerfPatcher
     {
         public const string Guid = "valheimmods.ValPerfPatcher";
         public const string Name = "ValPerfPatcher";
-        public const string Version = "1.0.14";
+        public const string Version = "1.0.15";
 
         private Harmony _harmony;
 
@@ -68,7 +68,7 @@ namespace ValPerfPatcher
                 () => AdventureBackpacksProxyFix.Apply(harmony));
 
             Apply("Adventure Backpacks: item backpack check without garbage", AdventureBackpacksProxyFix.TargetGuid,
-                "Adventure Backpacks asks whether each equipped item is a backpack many times per frame, making about 2 KB of garbage per frame with a full set of gear. This remembers the answer per item type and skips the extra list.",
+                "Adventure Backpacks asks whether each equipped item is a backpack many times per frame, making about 2 KB of garbage per frame with a full set of gear. This remembers the answer per item type and skips the extra list (Adventure Backpacks 2.4.6 and later skip that list themselves).",
                 () => AdventureBackpacksItemCheckFix.Apply(harmony));
 
             var sectorText = Config.Bind("Creature Level & Loot Control", "Minimap level refresh seconds", 0.25f,
@@ -197,7 +197,7 @@ namespace ValPerfPatcher
                 () => SeasonalityIceGripFix.Apply(_harmony));
 
             Apply("Seasonality: season change finishes", SeasonalWaterCacheFix.SeasonalityGuid,
-                "Seasonality never takes broken shore-ice pieces off its list when they are mined or their area unloads, so the next season change fails on a piece that is gone and stops halfway: the world already looks like the new season, but the season name on the screen keeps the old one, and winter ice can keep being added to new areas. Remove the gone pieces from that list just before the season change goes through it.",
+                "Seasonality never takes broken shore-ice pieces off its list when they are mined or their area unloads, so the next season change fails on a piece that is gone and stops halfway: the world already looks like the new season, but the season name on the screen keeps the old one, and winter ice can keep being added to new areas. Remove the gone pieces from that list just before the season change goes through it. Seasonality 3.8.5 and later no longer fail on them, but the list still keeps growing; this keeps it short.",
                 () => SeasonalitySeasonChangeFix.Apply(_harmony));
 
             Apply("Farming: no error for the planting preview", FarmingGhostPlantFix.TargetGuid,

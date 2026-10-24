@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.15
+
+- Checked against the latest mod updates (Seasonality 3.8.5, Adventure Backpacks 2.4.6, Server Devcommands, Bestiary and others): every fix still applies.
+- Adventure Backpacks 2.4.6 now finds an equipped backpack without the extra list itself, so that part of the item backpack check steps aside there. Remembering the answer per item type still saves garbage.
+
 ## 1.0.14
 
 - New fix, **Base game: no log flood when standing still on ice.** Standing still on slippery ice could write the same warning to the log about 50 times a second.

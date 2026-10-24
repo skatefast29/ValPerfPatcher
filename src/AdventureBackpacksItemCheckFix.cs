@@ -15,6 +15,9 @@ namespace ValPerfPatcher
     /// This remembers the answer per item type (ItemData.m_shared, shared by every item of that type), keeps the
     /// per-item backpack data check, and walks the inventory for equipped items without the new list. Same answers.
     /// Only answers given while in a world are cached, so nothing is remembered before the backpack types are loaded.
+    /// Adventure Backpacks 2.4.6 made both checks cheaper itself (sets instead of LINQ, no equipped list); its IsBackpack
+    /// still makes the prefab's name string for every item that isn't a backpack, so the per-type answer still helps,
+    /// but the equipped walk is then left to it.
     /// </summary>
     internal static class AdventureBackpacksItemCheckFix
     {
@@ -43,8 +46,18 @@ namespace ValPerfPatcher
                 postfix: new HarmonyMethod(typeof(AdventureBackpacksItemCheckFix), nameof(ItemPostfix)));
             // Calls IsBackpack through Harmony's patched version, so the cache above answers.
             _isBackpack = (Func<ItemDrop.ItemData, bool>)Delegate.CreateDelegate(typeof(Func<ItemDrop.ItemData, bool>), isBackpack);
+            // 2.4.6 and later walk the inventory themselves instead of asking for the list of equipped items.
+            bool walksItself = true;
+            var equippedItems = AccessTools.Method(typeof(Inventory), nameof(Inventory.GetEquippedItems), Type.EmptyTypes);
+            try
+            {
+                foreach (var ci in PatchProcessor.GetOriginalInstructions(equipped))
+                    if (ci.Calls(equippedItems)) walksItself = false;
+            }
+            catch (Exception) { walksItself = false; }
             // Last, so any other mod's prefix on it still runs first.
-            harmony.Patch(equipped, prefix: new HarmonyMethod(typeof(AdventureBackpacksItemCheckFix), nameof(EquippedPrefix)) { priority = Priority.Last });
+            if (!walksItself)
+                harmony.Patch(equipped, prefix: new HarmonyMethod(typeof(AdventureBackpacksItemCheckFix), nameof(EquippedPrefix)) { priority = Priority.Last });
             harmony.Patch(AccessTools.Method(typeof(Game), "Shutdown"),
                 postfix: new HarmonyMethod(typeof(AdventureBackpacksItemCheckFix), nameof(Clear)));
             return null;

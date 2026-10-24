@@ -14,7 +14,8 @@ namespace ValPerfPatcher
     /// (Fish.ConsiderJump / Jump) and keep picking swim points just under the surface (Fish.RandomizeWaypoint uses
     /// m_minDepth, often a fraction of a metre). A fish that jumps lands on top of the ice; the game then thinks it is
     /// out of the water and leaves it flopping there.
-    /// While the water is frozen (the same rule FrozenZones uses: season Winter and 'Water Freezes' on) this:
+    /// While the water is frozen (the same rule FrozenZones uses: season Winter, from SeasonTime on 3.8.5 and later,
+    /// and 'Water Freezes' on) this:
     ///  - stops fish jumping;
     ///  - keeps their swim points at least IceClearance below the ice (never below the sea floor);
     ///  - moves a wild fish found lying on the ice back under it (only the fish this game owns, never a hooked fish or
@@ -36,6 +37,7 @@ namespace ValPerfPatcher
 
         private static bool _frozen;
         private static ConfigEntryBase _season, _freezes;
+        private static System.Reflection.FieldInfo _currentSeason; // Seasonality 3.8.5+: SeasonTime.m_currentSeason
         private static int _waterMask;
 
         // Set in Apply, so a renamed field makes this fix stand down there instead of failing when the class loads.
@@ -62,6 +64,15 @@ namespace ValPerfPatcher
             if (_season == null || _freezes == null || !_season.SettingType.IsEnum || !_freezes.SettingType.IsEnum ||
                 !Enum.IsDefined(_season.SettingType, "Winter") || !Enum.IsDefined(_freezes.SettingType, "On"))
                 return "Seasonality's season or frozen water settings have changed since this fix was written";
+            // From 3.8.5 the season in play is SeasonTime.m_currentSeason (FrozenZones reads it there); a client takes
+            // it from the server's season sync before its own setting catches up. Older versions only have the setting.
+            var seasonTime = Plugin.ModType(SeasonalWaterCacheFix.SeasonalityGuid, "Seasonality.SeasonTime");
+            var current = Plugin.FieldOrNull(seasonTime, "m_currentSeason");
+            var onChange = seasonTime == null ? null : AccessTools.DeclaredMethod(
+                Plugin.ModType(SeasonalWaterCacheFix.SeasonalityGuid, "Seasonality.SeasonalityPlugin"), "OnSeasonChange", Type.EmptyTypes);
+            if (seasonTime != null && (current == null || !current.IsStatic || current.FieldType != _season.SettingType || onChange == null || !onChange.IsStatic))
+                return "Seasonality's season timer has changed since this fix was written";
+            _currentSeason = current;
             var problem = FrozenSurfaces.Ensure(harmony);
             if (problem != null) return problem;
 
@@ -107,6 +118,9 @@ namespace ValPerfPatcher
             _season.ConfigFile.SettingChanged += Refresh;
             if (_freezes.ConfigFile != _season.ConfigFile) _freezes.ConfigFile.SettingChanged += Refresh;
             Refresh(null, null);
+            // A finalizer, so the new season is picked up even if one of Seasonality's season-change steps throws.
+            if (onChange != null)
+                harmony.Patch(onChange, finalizer: new HarmonyMethod(typeof(SeasonalityFishUnderIceFix), nameof(SeasonChanged)));
 
             harmony.Patch(consider, prefix: new HarmonyMethod(typeof(SeasonalityFishUnderIceFix), nameof(NoJumpWhileFrozen)));
             harmony.Patch(randomize, postfix: new HarmonyMethod(typeof(SeasonalityFishUnderIceFix), nameof(WaypointUnderIce)));
@@ -212,7 +226,10 @@ namespace ValPerfPatcher
 
         // Settings change rarely (season timer, server sync), so the check per fish is a plain bool.
         private static void Refresh(object sender, EventArgs e) =>
-            _frozen = _season.BoxedValue.ToString() == "Winter" && _freezes.BoxedValue.ToString() == "On";
+            _frozen = (_currentSeason != null ? _currentSeason.GetValue(null) : _season.BoxedValue).ToString() == "Winter" &&
+                      _freezes.BoxedValue.ToString() == "On";
+
+        private static void SeasonChanged() => Refresh(null, null);
 
         private static bool NoJumpWhileFrozen() => !_frozen;
 
