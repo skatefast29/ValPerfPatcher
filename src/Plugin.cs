@@ -35,7 +35,7 @@ namespace ValPerfPatcher
     {
         public const string Guid = "valheimmods.ValPerfPatcher";
         public const string Name = "ValPerfPatcher";
-        public const string Version = "1.0.15";
+        public const string Version = "1.0.16";
 
         private Harmony _harmony;
 
@@ -146,6 +146,10 @@ namespace ValPerfPatcher
             Apply("Base game: no log flood when standing still on ice", null,
                 "A character standing still on slippery ground is turned towards where it has been sliding. Right after moving straight up or down (a teleport into a new area, a fall) that slide can be exactly zero, and then the game writes 'Look rotation viewing vector is zero' to the log every physics step (about 50 a second) until it moves, and slowly turns it towards north. Common with Seasonality's frozen water, where everyone slips: the player standing still on the ice is enough. With no slide the character just keeps facing the way it does; anything else is unchanged.",
                 () => SlideStandStillFix.Apply(harmony, Logger));
+
+            Apply("Base game: character save without the map freeze", null,
+                "Every character save packs the whole explored map one pixel at a time and compresses it, freezing the game for about a tenth of a second. A server makes every player save on its 30-minute world save, and each game also saves on its own 30-minute timer. For those two saves the map is copied in about a millisecond and packed on another CPU thread into exactly the same data, and the save finishes a moment later; if the map hasn't changed since the last save, the last data is used again. Logging out, quitting, sleeping and the save command save the game's way, as before. Only the character file is involved, never the world.",
+                () => MapSaveFix.Apply(harmony, Logger));
         }
 
         // After every plugin's Awake: fixes for code bundled into mods that may load after this one.

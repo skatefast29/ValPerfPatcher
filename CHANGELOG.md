@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.16
+
+- New fix, **Base game: character save without the map freeze.** The regular character saves (every 30 minutes, and whenever a server saves the world) froze every player's game for about a tenth of a second while the explored map was packed. The map is now packed on another CPU thread into exactly the same data and checked before it's used; the save itself finishes a moment later, with about 30 ms left on the game's thread instead of about 135 ms. Logging out, quitting and other saves are unchanged. Only the character file is involved, never the world.
+
 ## 1.0.15
 
 - Checked against the latest mod updates (Seasonality 3.8.5, Adventure Backpacks 2.4.6, Server Devcommands, Bestiary and others): every fix still applies.
