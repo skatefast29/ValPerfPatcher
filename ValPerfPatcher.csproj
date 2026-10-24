@@ -6,7 +6,7 @@
     <AssemblyName>ValPerfPatcher</AssemblyName>
     <RootNamespace>ValPerfPatcher</RootNamespace>
     <Nullable>disable</Nullable>
-    <Version>1.0.16</Version>
+    <Version>1.0.17</Version>
     <DebugType>none</DebugType>
   </PropertyGroup>
 
@@ -16,6 +16,7 @@
     <ManagedDir>$(ValheimDir)\valheim_Data\Managed</ManagedDir>
     <BepInExCore>$(GaleProfile)\BepInEx\core</BepInExCore>
     <Plugins>$(GaleProfile)\BepInEx\plugins</Plugins>
+    <HearthBelowDll Condition="'$(HearthBelowDll)' == ''">$(Plugins)\Azumatt-HearthBelow\HearthBelow.dll</HearthBelowDll>
   </PropertyGroup>
 
   <ItemGroup>
@@ -30,7 +31,8 @@
     <Reference Include="UnityEngine.AssetBundleModule" HintPath="$(ManagedDir)\UnityEngine.AssetBundleModule.dll" Private="false" />
     <Reference Include="UnityEngine.PhysicsModule" HintPath="$(ManagedDir)\UnityEngine.PhysicsModule.dll" Private="false" />
     <!-- Only touched when HearthBelow is installed (see HearthBelowFix). -->
-    <Reference Include="HearthBelow" HintPath="$(Plugins)\Azumatt-HearthBelow\HearthBelow.dll" Private="false" />
+    <!-- -p:HearthBelowDll=<path> when the profile has it switched off. -->
+    <Reference Include="HearthBelow" HintPath="$(HearthBelowDll)" Private="false" />
   </ItemGroup>
 
   <Target Name="DeployToGale" AfterTargets="Build" Condition="'$(Deploy)' == 'true'">

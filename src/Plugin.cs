@@ -35,7 +35,7 @@ namespace ValPerfPatcher
     {
         public const string Guid = "valheimmods.ValPerfPatcher";
         public const string Name = "ValPerfPatcher";
-        public const string Version = "1.0.16";
+        public const string Version = "1.0.17";
 
         private Harmony _harmony;
 
@@ -164,7 +164,7 @@ namespace ValPerfPatcher
                 () => StackedVegetationFix.Apply(_harmony, Logger));
 
             Apply("Riverheim: start building the world early", RiverheimLoadFix.TargetGuid,
-                "Riverheim builds its whole world map (about 7 s) only after the game has paused and loaded the scene. Start the same build in the background as soon as a world is started from the menu, so it runs during that wait. Same world; joining someone else's server is unchanged.",
+                "Riverheim builds its whole world map (about 7 s) only after the game has paused and loaded the scene. Start the same build in the background as soon as a world is started from the menu, so it runs during that wait. When joining a server, start the world that server had last time as soon as Join is pressed; it is only used if the server sends the same world and settings. Same world.",
                 () => RiverheimLoadFix.ApplyHeadStart(_harmony, Logger));
 
             Apply("Riverheim: biome map on all CPU cores", RiverheimLoadFix.TargetGuid,

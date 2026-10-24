@@ -1,6 +1,10 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
 using System.Reflection;
 using System.Threading.Tasks;
+using BepInEx;
 using BepInEx.Logging;
 using HarmonyLib;
 using UnityEngine;
@@ -15,8 +19,10 @@ namespace ValPerfPatcher
     ///    same build (Riverheim's own BuildPipeline and Compute) on background threads the moment a world is
     ///    started from the menu (ZNet.SetServer). Riverheim still runs its own Pregenerate; when it computes its
     ///    new build for the same world, seed and settings, that waits for the early one and takes its results
-    ///    instead of computing them again. Joining someone else's server is untouched (the world comes from the
-    ///    server there).
+    ///    instead of computing them again. Joining a server: the world only arrives from the server after the
+    ///    scene has loaded, so the build for the world last played on that server (remembered in BepInEx\cache)
+    ///    starts when the server address is set at Join. If the server sends another world, seed or settings,
+    ///    the early build is ignored and Riverheim builds as usual.
     ///
     /// 2. Biome map in parallel (base game, with Riverheim): every world load, AltBiomeWorldData.VerifyBiomeData
     ///    samples the biome and height of 4 million map points one at a time (about 5 s with Riverheim).
@@ -93,7 +99,11 @@ namespace ValPerfPatcher
 
         private sealed class Pending
         {
-            public World World;
+            public World World;          // hosting: the world started from the menu; null for a remembered server world
+            public string Key;           // remembered server world: the server, and what it must send to use the build
+            public string Name;
+            public long Uid;
+            public byte[] SettingsBytes;
             public int Seed;
             public object Settings;
             public object Pipeline;
@@ -102,6 +112,12 @@ namespace ValPerfPatcher
 
         private static Pending _pending;
         private static World _generating; // the world whose Pregenerate is running
+        private static Pending _lastGuess; // the remembered-world build for the last join, until a world load decides on it
+
+        // Riverheim's own settings serializer (ZPackageExtensions), the one it sends worlds to clients with
+        private static MethodInfo _writeSettings, _readSettings;
+        private static string _joinsFile;
+        private const int MaxRemembered = 20;
 
         public static string ApplyHeadStart(Harmony harmony, ManualLogSource log)
         {
@@ -121,6 +137,26 @@ namespace ValPerfPatcher
                 prefix: new HarmonyMethod(typeof(RiverheimLoadFix), nameof(PregeneratePrefix)) { priority = Priority.First },
                 finalizer: new HarmonyMethod(typeof(RiverheimLoadFix), nameof(PregenerateFinalizer)));
             harmony.Patch(_compute, prefix: new HarmonyMethod(typeof(RiverheimLoadFix), nameof(ComputePrefix)));
+
+            // Joining a server: optional, the hosting part works without it.
+            var ext = _riverheim.GetType("Riverheim.Plugin.ZPackageExtensions", false);
+            var settingsType = _riverheim.GetType("Riverheim.Configuration.WorldSettings", false);
+            _writeSettings = ext == null || settingsType == null ? null : AccessTools.DeclaredMethod(ext, "Write", new[] { typeof(ZPackage), settingsType });
+            _readSettings = ext == null ? null : AccessTools.DeclaredMethod(ext, "ReadWorldSettings", new[] { typeof(ZPackage) });
+            var hosts = new[]
+            {
+                AccessTools.DeclaredMethod(typeof(ZNet), nameof(ZNet.SetServerHost), new[] { typeof(string) }),
+                AccessTools.DeclaredMethod(typeof(ZNet), nameof(ZNet.SetServerHost), new[] { typeof(ulong) }),
+                AccessTools.DeclaredMethod(typeof(ZNet), nameof(ZNet.SetServerHost), new[] { typeof(string), typeof(int), typeof(OnlineBackendType) }),
+            };
+            if (_writeSettings == null || _readSettings == null || _readSettings.ReturnType != settingsType || Array.IndexOf(hosts, null) >= 0)
+            {
+                _log.LogInfo("Riverheim: early build when joining a server is off (Riverheim's or the game's join code has changed); hosting is unaffected.");
+                return null;
+            }
+            _joinsFile = Path.Combine(Path.Combine(Paths.CachePath, "ValPerfPatcher"), "riverheim-server-worlds.txt");
+            foreach (var m in hosts)
+                harmony.Patch(m, postfix: new HarmonyMethod(typeof(RiverheimLoadFix), nameof(SetServerHostPostfix)));
             return null;
         }
 
@@ -142,17 +178,7 @@ namespace ValPerfPatcher
                 if (!server || world == null || world.m_menu || world.m_seed == 0 || !_isCustom(world)) return;
                 var settings = _getSettings(world);
                 if (settings == null) return;
-                var config = _getConfig(settings);
-                var pipeline = _buildPipeline();
-                if (config == null || pipeline == null) return;
-                int seed = world.m_seed;
-                var task = Task.Run(() =>
-                {
-                    try { _compute.Invoke(pipeline, new object[] { seed, config }); }
-                    catch (TargetInvocationException e) when (e.InnerException != null) { throw e.InnerException; }
-                });
-                _pending = new Pending { World = world, Seed = seed, Settings = settings, Pipeline = pipeline, Task = task };
-                _log.LogInfo($"Riverheim: started building world '{world.m_name}' early, while the game loads.");
+                StartBuild(new Pending { World = world, Seed = world.m_seed, Settings = settings }, world.m_name);
             }
             catch (Exception e)
             {
@@ -161,9 +187,110 @@ namespace ValPerfPatcher
             }
         }
 
+        private static void StartBuild(Pending p, string worldName)
+        {
+            var config = _getConfig(p.Settings);
+            var pipeline = _buildPipeline();
+            if (config == null || pipeline == null) return;
+            int seed = p.Seed;
+            p.Pipeline = pipeline;
+            p.Task = Task.Run(() =>
+            {
+                try { _compute.Invoke(pipeline, new object[] { seed, config }); }
+                catch (TargetInvocationException e) when (e.InnerException != null) { throw e.InnerException; }
+            });
+            _pending = p;
+            _log.LogInfo($"Riverheim: started building world '{worldName}' early, while the game loads.");
+        }
+
+        // Join pressed (the server's address is set): start the world this server had last time.
+        private static void SetServerHostPostfix()
+        {
+            try
+            {
+                if (ZNet.instance != null) return; // only at Join, before the game scene exists
+                string key = ZNet.GetServerString();
+                if (_pending != null && _pending.World == null) return; // already building for this join
+                // The game retries a failed connection by joining again: keep the build already running for it.
+                var last = _lastGuess;
+                if (last != null && last.Key == key && !last.Task.IsFaulted)
+                {
+                    _pending = last;
+                    return;
+                }
+                foreach (var r in ReadRemembered())
+                {
+                    if (r[0] != key) continue;
+                    var bytes = Convert.FromBase64String(r[4]);
+                    var settings = _readSettings.Invoke(null, new object[] { new ZPackage(bytes) });
+                    var p = new Pending
+                    {
+                        Key = key, Name = r[1], Seed = int.Parse(r[2], CultureInfo.InvariantCulture), Uid = long.Parse(r[3], CultureInfo.InvariantCulture),
+                        SettingsBytes = bytes, Settings = settings,
+                    };
+                    StartBuild(p, r[1]);
+                    if (_pending == p) _lastGuess = p;
+                    return;
+                }
+            }
+            catch (Exception e)
+            {
+                _pending = null;
+                _log.LogWarning($"Riverheim: early world build for this server not started ({e.GetType().Name}: {e.Message}); Riverheim builds it at the usual time.");
+            }
+        }
+
+        private static byte[] SettingsBytes(object settings)
+        {
+            var pkg = new ZPackage();
+            _writeSettings.Invoke(null, new[] { pkg, settings });
+            return pkg.GetArray();
+        }
+
+        // Lines: server \t world name \t seed \t world uid \t Riverheim settings (base64); newest first.
+        private static List<string[]> ReadRemembered()
+        {
+            var list = new List<string[]>();
+            if (_joinsFile == null || !File.Exists(_joinsFile)) return list;
+            foreach (var line in File.ReadAllLines(_joinsFile))
+            {
+                var r = line.Split('\t');
+                if (r.Length == 5) list.Add(r);
+            }
+            return list;
+        }
+
+        // A joined server's world is being built: remember it for the next join to that server.
+        private static void Remember(World world)
+        {
+            if (_joinsFile == null || ZNet.instance == null || ZNet.instance.IsServer()) return;
+            try
+            {
+                if (world == null || world.m_seed == 0 || !_isCustom(world)) return;
+                var settings = _getSettings(world);
+                if (settings == null) return;
+                string key = ZNet.GetServerString();
+                var row = new[] { key, world.m_name, world.m_seed.ToString(CultureInfo.InvariantCulture), world.m_uid.ToString(CultureInfo.InvariantCulture), Convert.ToBase64String(SettingsBytes(settings)) };
+                var list = ReadRemembered();
+                if (list.Count > 0 && string.Join("\t", list[0]) == string.Join("\t", row)) return;
+                list.RemoveAll(r => r[0] == key);
+                list.Insert(0, row);
+                if (list.Count > MaxRemembered) list.RemoveRange(MaxRemembered, list.Count - MaxRemembered);
+                Directory.CreateDirectory(Path.GetDirectoryName(_joinsFile));
+                var lines = new List<string>();
+                foreach (var r in list) lines.Add(string.Join("\t", r));
+                File.WriteAllLines(_joinsFile, lines.ToArray());
+            }
+            catch (Exception e)
+            {
+                _log.LogWarning($"Riverheim: could not remember this server's world ({e.GetType().Name}: {e.Message}).");
+            }
+        }
+
         private static void PregeneratePrefix(WorldGenerator __instance)
         {
             _generating = __instance.m_world;
+            Remember(_generating);
         }
 
         private static Exception PregenerateFinalizer(Exception __exception)
@@ -181,15 +308,22 @@ namespace ValPerfPatcher
             var world = _generating;
             if (p == null || world == null || ReferenceEquals(__instance, p.Pipeline)) return true; // the early build itself
             _pending = null;
+            _lastGuess = null; // used or not, a build is never handed out twice
             try
             {
-                if (!ReferenceEquals(p.World, world) || p.Seed != world.m_seed || seed != p.Seed)
+                bool sameWorld = p.World != null
+                    ? ReferenceEquals(p.World, world)
+                    : p.Name == world.m_name && p.Uid == world.m_uid;
+                if (!sameWorld || p.Seed != world.m_seed || seed != p.Seed)
                 {
                     _log.LogInfo("Riverheim: the early build was for another world; building normally.");
                     return true;
                 }
                 var settings = _getSettings(world);
-                if (!ReferenceEquals(settings, p.Settings) && !Equals(settings, p.Settings))
+                bool sameSettings = p.World != null
+                    ? ReferenceEquals(settings, p.Settings) || Equals(settings, p.Settings)
+                    : settings != null && Convert.ToBase64String(SettingsBytes(settings)) == Convert.ToBase64String(p.SettingsBytes);
+                if (!sameSettings)
                 {
                     _log.LogInfo("Riverheim: world settings changed after the early build started; building normally.");
                     return true;

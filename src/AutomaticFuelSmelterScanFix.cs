@@ -34,7 +34,9 @@ namespace ValPerfPatcher
 
         public static string Apply(Harmony harmony)
         {
-            var type = Plugin.ModType(TargetGuid, "AutomaticFuel.GameClasses.Smelters+BlastFurnacePatch");
+            // AutomaticFuel.GameClasses up to 1.5.7, AutomaticFuel.Patches from 1.5.8.
+            var type = Plugin.ModType(TargetGuid, "AutomaticFuel.Patches.Smelters+BlastFurnacePatch", fallback: false) ??
+                       Plugin.ModType(TargetGuid, "AutomaticFuel.GameClasses.Smelters+BlastFurnacePatch");
             // Prefix(Smelter) up to 1.5.5, Prefix(ref Smelter) from 1.5.7. Plain reflection: AccessTools logs a warning for the one that is missing.
             const BindingFlags flags = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
             var prefix = type == null ? null : type.GetMethod("Prefix", flags, null, new[] { typeof(Smelter) }, null) ??
