@@ -35,7 +35,7 @@ namespace ValPerfPatcher
     {
         public const string Guid = "valheimmods.ValPerfPatcher";
         public const string Name = "ValPerfPatcher";
-        public const string Version = "1.0.17";
+        public const string Version = "1.0.18";
 
         private Harmony _harmony;
 
@@ -90,6 +90,10 @@ namespace ValPerfPatcher
             Apply("AutomaticFuel: count smelters without searching everything", AutomaticFuelSmelterScanFix.TargetGuid,
                 "Every time a smelter, kiln or furnace is created (entering a base, loading an area, the hammer's placement preview) AutomaticFuel searches every object Unity has loaded to count the smelters, about 35 ms with a big mod list. Search once per world and keep that list up to date as smelters are created and removed. Same count. AutomaticFuel 1.5.7 and later no longer searches; with it, this one steps aside.",
                 () => AutomaticFuelSmelterScanFix.Apply(harmony));
+
+            Apply("AutomaticFuel: anyone can switch a torch", AutomaticFuelSmelterScanFix.TargetGuid,
+                "AutomaticFuel's torch switch key only works for the player the game counts as the fire's owner; everyone else gets 'Cannot toggle (not owner)'. Take ownership of the fire first, as the mod already does for smelters.",
+                () => AutomaticFuelTorchSwitchFix.Apply(harmony));
 
             Apply("Seasonality: helpers added once after a relog", SeasonalWaterCacheFix.SeasonalityGuid,
                 "On every world load Seasonality adds another fall-colour helper to each tree prefab and another frozen-water helper to the area template, so after each logout and login every tree and water area carries one more (each tree repeats the same colour work, each water area gets another collider and material copy; about 12,700 more objects per relog). Add them only when the prefab has none yet, as on the first world load.",
@@ -150,6 +154,10 @@ namespace ValPerfPatcher
             Apply("Base game: character save without the map freeze", null,
                 "Every character save packs the whole explored map one pixel at a time and compresses it, freezing the game for about a tenth of a second. A server makes every player save on its 30-minute world save, and each game also saves on its own 30-minute timer. For those two saves the map is copied in about a millisecond and packed on another CPU thread into exactly the same data, and the save finishes a moment later; if the map hasn't changed since the last save, the last data is used again. Logging out, quitting, sleeping and the save command save the game's way, as before. Only the character file is involved, never the world.",
                 () => MapSaveFix.Apply(harmony, Logger));
+
+            Apply("Base game: hide fish stuck in the air", null,
+                "With other players around, fish can hang in the air above the water: a fish nobody was near stays where it was (often mid-jump), and when players come back it is handed to one of them, whose game may take a while to load it, while everyone else's game already shows it. Common when sailing together. On your game, a fish another player's game owns that has not moved for 3 seconds and is clearly above the water, not lying on anything, is not drawn until it moves again. Your own fish, moving or jumping fish, and fish lying on the shore or a deck always show. Only what you see changes.",
+                () => StuckFishHideFix.Apply(harmony));
         }
 
         // After every plugin's Awake: fixes for code bundled into mods that may load after this one.

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.18
+
+- New fix: fish no longer hang in the air over the water in multiplayer.
+- New fix: AutomaticFuel's torch switch key works for every player, not only the fire's owner.
+- Checked against AutomaticFuel 1.6.0, Valheim Community Patch 0.38.0 and other updates.
+
 ## 1.0.17
 
 - Riverheim early world build now also works when joining a server (world build on the loading screen 6.8 s -> 0.6 s).
