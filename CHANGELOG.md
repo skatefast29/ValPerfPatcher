@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.21
+
+- New fix: floating crates, logs and dropped items are sent to the server far less often (one player's upload near floating crates: 198 KB/s down to 34 KB/s).
+- New fix: creatures' walk and turn speeds are sent less often.
+
 ## 1.0.20
 
 - General snow accumulation fixes, configurable.

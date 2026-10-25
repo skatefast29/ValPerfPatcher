@@ -35,7 +35,7 @@ namespace ValPerfPatcher
     {
         public const string Guid = "valheimmods.ValPerfPatcher";
         public const string Name = "ValPerfPatcher";
-        public const string Version = "1.0.20";
+        public const string Version = "1.0.21";
 
         private Harmony _harmony;
 
@@ -154,6 +154,18 @@ namespace ValPerfPatcher
             Apply("Base game: character save without the map freeze", null,
                 "Every character save packs the whole explored map one pixel at a time and compresses it, freezing the game for about a tenth of a second. A server makes every player save on its 30-minute world save, and each game also saves on its own 30-minute timer. For those two saves the map is copied in about a millisecond and packed on another CPU thread into exactly the same data, and the save finishes a moment later; if the map hasn't changed since the last save, the last data is used again. Logging out, quitting, sleeping and the save command save the game's way, as before. Only the character file is involved, never the world.",
                 () => MapSaveFix.Apply(harmony, Logger));
+
+            var floatStep = Config.Bind("Base game", "Floating object sync step cm", 5f,
+                new ConfigDescription("How far a floating crate, log or dropped item you own must move from where it was last sent before it is sent again. 0 = every change, as the game does.", new AcceptableValueRange<float>(0f, 50f)));
+            FloatingSyncDeadbandFix.PositionStep = floatStep.Value / 100f;
+            floatStep.SettingChanged += (_, __) => FloatingSyncDeadbandFix.PositionStep = floatStep.Value / 100f;
+            Apply("Base game: floating objects sent less often", null,
+                "Crates, logs and dropped items floating in water move a little on every frame, and the game sends each one to the server again every time (20-26 times a second each; a dozen floating crates near a base were about 60 KB/s of upload for one player). Send one again only once it has moved 'Floating object sync step cm' (under Base game), turned 2 degrees or changed speed by 0.1 m/s from what was last sent. Creatures, ships, carts and fish are not affected.",
+                () => FloatingSyncDeadbandFix.Apply(harmony, Logger));
+
+            Apply("Base game: creature walk and turn speeds sent less often", null,
+                "Every creature you are near sends its walking, sideways and turning speed for its animation whenever it wobbles even slightly, so a creature is sent to the server again about 10 times a second even while it stands around (Skeletons and Draugr: three quarters of what they send). Send those speeds again only once they have changed by 0.1 from what was last sent; a speed that close to zero is sent as zero. Players are not affected; on your own screen nothing changes.",
+                () => AnimSyncDeadbandFix.Apply(harmony, Logger));
 
             Apply("Base game: hide fish stuck in the air", null,
                 "With other players around, fish can hang in the air above the water: a fish nobody was near stays where it was (often mid-jump), and when players come back it is handed to one of them, whose game may take a while to load it, while everyone else's game already shows it. Common when sailing together. On your game, a fish another player's game owns that has not moved for 3 seconds and is clearly above the water, not lying on anything, is not drawn until it moves again. Your own fish, moving or jumping fish, and fish lying on the shore or a deck always show. Only what you see changes.",
