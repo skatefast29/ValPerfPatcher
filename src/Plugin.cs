@@ -35,7 +35,7 @@ namespace ValPerfPatcher
     {
         public const string Guid = "valheimmods.ValPerfPatcher";
         public const string Name = "ValPerfPatcher";
-        public const string Version = "1.0.19";
+        public const string Version = "1.0.20";
 
         private Harmony _harmony;
 
@@ -158,6 +158,29 @@ namespace ValPerfPatcher
             Apply("Base game: hide fish stuck in the air", null,
                 "With other players around, fish can hang in the air above the water: a fish nobody was near stays where it was (often mid-jump), and when players come back it is handed to one of them, whose game may take a while to load it, while everyone else's game already shows it. Common when sailing together. On your game, a fish another player's game owns that has not moved for 3 seconds and is clearly above the water, not lying on anything, is not drawn until it moves again. Your own fish, moving or jumping fish, and fish lying on the shore or a deck always show. Only what you see changes.",
                 () => StuckFishHideFix.Apply(harmony));
+
+            var snowCap = Config.Bind("Snow", "Snow cap percent", 10f,
+                new ConfigDescription("How tall snow on capped pieces may get, as a share of the game's full snow height. 100 = no cap, 0 = no snow on capped pieces. " +
+                                      "Only what you see changes; the snow saved on each piece is untouched.",
+                                      new AcceptableValueRange<float>(0f, 100f)));
+            var snowDeepNorth = Config.Bind("Snow", "Cap Deep North too", false,
+                "Off: Deep North snow stays as the game draws it and only other biomes are capped (where Seasonality adds winter snow). On: cap it everywhere.");
+            var snowScope = Config.Bind("Snow", "Cap applies to", SnowCapScope.Objects,
+                "Objects: crafting stations (smelters, kilns, beehives, workbenches), furniture, chests, and resource stacks and piles, plus the 'Capped pieces'; walls, floors, roofs, beams, fences and other building parts keep the game's snow. " +
+                "ListedPieces: only the 'Capped pieces'. AllPieces: every piece.");
+            var snowPieces = Config.Bind("Snow", "Capped pieces", "",
+                "Extra pieces to cap (prefab names, comma separated), e.g. a building part whose snow grows too tall. With 'Cap applies to' ListedPieces, only these.");
+            SnowCapFix.CapPercent = snowCap.Value;
+            SnowCapFix.IncludeDeepNorth = snowDeepNorth.Value;
+            SnowCapFix.Scope = snowScope.Value;
+            SnowCapFix.SetPieces(snowPieces.Value);
+            snowScope.SettingChanged += (_, __) => { SnowCapFix.Scope = snowScope.Value; SnowCapFix.Refresh(); };
+            snowPieces.SettingChanged += (_, __) => { SnowCapFix.SetPieces(snowPieces.Value); SnowCapFix.Refresh(); };
+            snowCap.SettingChanged += (_, __) => { SnowCapFix.CapPercent = snowCap.Value; SnowCapFix.Refresh(); };
+            snowDeepNorth.SettingChanged += (_, __) => { SnowCapFix.IncludeDeepNorth = snowDeepNorth.Value; SnowCapFix.Refresh(); };
+            Apply("Base game: snow cap on objects", null,
+                "The game's snow on pieces can grow about 1.3 m tall. On roofs and walls that looks right, but on small objects (beehives, smelters, kilns) it becomes a tall pillar, and Seasonality's 'Add Snow' brings every unroofed piece to full in winter. Draw snow on objects at most 'Snow cap percent' tall (settings under Snow); building parts keep the game's snow, and the Deep North is left as the game draws it unless 'Cap Deep North too' is on. Only what you see changes.",
+                () => SnowCapFix.Apply(harmony));
         }
 
         // After every plugin's Awake: fixes for code bundled into mods that may load after this one.
@@ -211,6 +234,10 @@ namespace ValPerfPatcher
             Apply("Seasonality: season change finishes", SeasonalWaterCacheFix.SeasonalityGuid,
                 "Seasonality never takes broken shore-ice pieces off its list when they are mined or their area unloads, so the next season change fails on a piece that is gone and stops halfway: the world already looks like the new season, but the season name on the screen keeps the old one, and winter ice can keep being added to new areas. Remove the gone pieces from that list just before the season change goes through it. Seasonality 3.8.5 and later no longer fail on them, but the list still keeps growing; this keeps it short.",
                 () => SeasonalitySeasonChangeFix.Apply(_harmony));
+
+            Apply("Seasonality: winter snow on every unroofed piece", SeasonalWaterCacheFix.SeasonalityGuid,
+                "Seasonality clears the winter snow from any piece the game thinks has a roof. The game's roof check looks straight up from the piece, but also counts the floor the piece stands on when the piece sits slightly sunk into it, so identical pieces side by side (kilns on a stone floor) get snow or none by chance. For winter snow, only count what is really above the piece, checked every few seconds instead of every second. The game's own roof check (rain wear, Deep North snow) is unchanged.",
+                () => SeasonalitySnowRoofFix.Apply(_harmony));
 
             Apply("Farming: no error for the planting preview", FarmingGhostPlantFix.TargetGuid,
                 "Every seed you plant makes the game rebuild the see-through planting preview, and Farming's plant hook then tries to save your farming skill on that preview, which can't hold it: one error with a full stack trace in the log per seed (473 in one 2.5 h session), a small stutter each time. Skip Farming's hook for the preview only; real plants get your skill as before.",

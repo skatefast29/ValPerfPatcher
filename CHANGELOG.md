@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.20
+
+- General snow accumulation fixes, configurable.
+
 ## 1.0.19
 
 - New fix: Longship Upgrades ship check without garbage.
