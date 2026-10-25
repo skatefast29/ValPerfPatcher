@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.19
+
+- New fix: Longship Upgrades ship check without garbage.
+
 ## 1.0.18
 
 - New fix: fish no longer hang in the air over the water in multiplayer.

@@ -35,7 +35,7 @@ namespace ValPerfPatcher
     {
         public const string Guid = "valheimmods.ValPerfPatcher";
         public const string Name = "ValPerfPatcher";
-        public const string Version = "1.0.18";
+        public const string Version = "1.0.19";
 
         private Harmony _harmony;
 
@@ -215,6 +215,10 @@ namespace ValPerfPatcher
             Apply("Farming: no error for the planting preview", FarmingGhostPlantFix.TargetGuid,
                 "Every seed you plant makes the game rebuild the see-through planting preview, and Farming's plant hook then tries to save your farming skill on that preview, which can't hold it: one error with a full stack trace in the log per seed (473 in one 2.5 h session), a small stutter each time. Skip Farming's hook for the preview only; real plants get your skill as before.",
                 () => FarmingGhostPlantFix.Apply(_harmony));
+
+            Apply("Longship Upgrades: ship check without garbage", LongshipUpgradesShipCheckFix.TargetGuid,
+                "Longship Upgrades checks every ship on every physics step (50 times a second) to see whether it is a longship with its mast removed, and works that out from the ship's name, making garbage each time (about 5 KB a second per ship nearby). Use the ship's saved type number instead. Same result.",
+                () => LongshipUpgradesShipCheckFix.Apply(_harmony));
 
             Apply("Map: other players on top", null,
                 "The map draws icons in the order they were made, so other players' icons often end up hidden under other pins. Keep them on top. While TargetPortal's portal map is open, its portal icons stay above the players.",
