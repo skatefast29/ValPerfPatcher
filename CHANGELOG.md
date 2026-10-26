@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.23
+
+- New fix: Creature Level & Loot Control keeps its three map copies (192 MB) only when its level circles are shown.
+- New fix: AzuExtendedPlayerInventory refreshes its character preview only for your own gear, not every creature's.
+- New fix: AzuExtendedPlayerInventory's vanity item lists no longer grow without end.
+- MultiUserChest fix now also drops unused chest records while playing, not only when a world starts.
+
 ## 1.0.22
 
 - New fix: Creature Level & Loot Control asks the server for the time at most every 10 seconds instead of up to 100 times a second.

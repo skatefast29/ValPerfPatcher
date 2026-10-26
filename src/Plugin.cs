@@ -35,7 +35,7 @@ namespace ValPerfPatcher
     {
         public const string Guid = "valheimmods.ValPerfPatcher";
         public const string Name = "ValPerfPatcher";
-        public const string Version = "1.0.22";
+        public const string Version = "1.0.23";
 
         private Harmony _harmony;
 
@@ -50,6 +50,14 @@ namespace ValPerfPatcher
             Apply("AzuExtendedPlayerInventory: cache backpack check", AzuEpiBackpackFix.TargetGuid,
                 "AzuEPI's Adventure Backpacks compatibility asks 'is this item a backpack?' several times per frame, and each answer allocates (~2.5 KB of garbage per frame). Remember the answer per item type.",
                 () => AzuEpiBackpackFix.Apply(harmony));
+
+            Apply("AzuExtendedPlayerInventory: refresh the character preview only for your own gear", AzuEpiBackpackFix.TargetGuid,
+                "AzuEPI re-renders its character preview (~1.1 ms) whenever any creature equips or unequips something, e.g. every monster that spawns with a weapon. Refresh it only when your own character does.",
+                () => AzuEpiPreviewRefreshFix.Apply(harmony));
+
+            Apply("AzuExtendedPlayerInventory: keep the vanity item lists from growing", AzuEpiBackpackFix.TargetGuid,
+                "AzuEPI's vanity code remembers every item type it has looked at. MultiUserChest and AzuAutoStore give each item they move its own copy of its type, so the list grew by tens of thousands of entries while farming and never shrank. Empty the list when it passes 2,048 entries; anything still needed is worked out again.",
+                () => AzuEpiVanityCacheFix.Apply(harmony));
 
             Apply("Jotunn: reuse gamepad button names", JotunnInputFix.TargetGuid,
                 "Jotunn builds the string \"Joy!\" + button name on every input check (~80 per frame, ~2.4 KB of garbage per frame). Reuse one cached string per button.",
@@ -78,6 +86,10 @@ namespace ValPerfPatcher
             Apply("Creature Level & Loot Control: minimap level text a few times per second", CreatureLevelSectorTextFix.TargetGuid,
                 "The mod rebuilds the minimap's area level text every frame, making garbage each time. This rebuilds it at most every 'Minimap level refresh seconds'.",
                 () => CreatureLevelSectorTextFix.Apply(harmony));
+
+            Apply("Creature Level & Loot Control: copy the map only when its level circles are shown", CreatureLevelSectorTextFix.TargetGuid,
+                "On every world load the mod keeps three copies of the whole map (192 MB, for the session) and redraws the map, even when its distance circles are off. Make the copies and the redraw only when the circles are shown.",
+                () => CreatureLevelMapCirclesFix.Apply(harmony));
 
             Apply("Creature Level & Loot Control: ask the server for the time less often", CreatureLevelSectorTextFix.TargetGuid,
                 "Every inventory teleport check (portals check every 0.5 s nearby, backpacks on every save and load) makes the mod ask the server for its time over the network, up to 100 times a second. The mod keeps that time moving forward itself, so ask at most every 10 seconds.",
@@ -108,7 +120,7 @@ namespace ValPerfPatcher
                 () => CreatureLevelItemDataFix.Apply(harmony));
 
             Apply("MultiUserChest: forget old inventories when a world starts", MultiUserChestBlockResetFix.TargetGuid,
-                "MultiUserChest keeps a slot-block record for every inventory it has seen and never removes one, so the chests and player inventories of every earlier world session stay in memory. Empty that list when a world starts; the mod makes a fresh record whenever it needs one.",
+                "MultiUserChest keeps a slot-block record for every inventory it has seen and never removes one, so every chest it has touched stays in memory with all its items, even after the chest unloads or you change worlds. Empty that list when a world starts, and while playing drop the records with nothing blocked once there are more than 64; the mod makes a fresh record whenever it needs one.",
                 () => MultiUserChestBlockResetFix.Apply(harmony));
 
             Apply("Quick Stack: forget unloaded containers", QuickStackContainerListFix.TargetGuid,
