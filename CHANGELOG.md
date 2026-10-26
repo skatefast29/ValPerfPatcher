@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.22
+
+- New fix: Creature Level & Loot Control asks the server for the time at most every 10 seconds instead of up to 100 times a second.
+
 ## 1.0.21
 
 - New fix: floating crates, logs and dropped items are sent to the server far less often (one player's upload near floating crates: 198 KB/s down to 34 KB/s).

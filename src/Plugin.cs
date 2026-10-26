@@ -35,7 +35,7 @@ namespace ValPerfPatcher
     {
         public const string Guid = "valheimmods.ValPerfPatcher";
         public const string Name = "ValPerfPatcher";
-        public const string Version = "1.0.21";
+        public const string Version = "1.0.22";
 
         private Harmony _harmony;
 
@@ -78,6 +78,10 @@ namespace ValPerfPatcher
             Apply("Creature Level & Loot Control: minimap level text a few times per second", CreatureLevelSectorTextFix.TargetGuid,
                 "The mod rebuilds the minimap's area level text every frame, making garbage each time. This rebuilds it at most every 'Minimap level refresh seconds'.",
                 () => CreatureLevelSectorTextFix.Apply(harmony));
+
+            Apply("Creature Level & Loot Control: ask the server for the time less often", CreatureLevelSectorTextFix.TargetGuid,
+                "Every inventory teleport check (portals check every 0.5 s nearby, backpacks on every save and load) makes the mod ask the server for its time over the network, up to 100 times a second. The mod keeps that time moving forward itself, so ask at most every 10 seconds.",
+                () => CreatureLevelServerTimeFix.Apply(harmony));
 
             Apply("BetterMap: name trader pins only when the map updates them", BetterMapLocationPinsFix.TargetGuid,
                 "BetterMap looks up every location on the map on every frame to name the trader pins, although the game only adds or removes those pins every 5 seconds (~0.1 ms and ~0.8 KB of garbage per frame). Do it only on the frames where the game updated them.",
