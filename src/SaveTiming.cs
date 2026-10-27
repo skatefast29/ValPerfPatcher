@@ -77,9 +77,12 @@ namespace ValPerfPatcher
                 for (int run = 1; run <= times; run++)
                 {
                     _stats.Clear();
+                    long before = GC.GetTotalMemory(false);
                     var clock = Stopwatch.StartNew();
                     Game.instance.SavePlayerProfile(false);
-                    sb.Append($"save {run}: {clock.Elapsed.TotalMilliseconds:F1} ms |");
+                    double ms = clock.Elapsed.TotalMilliseconds;
+                    double mb = (GC.GetTotalMemory(false) - before) / 1048576.0;
+                    sb.Append($"save {run}: {ms:F1} ms, about {mb:F1} MB allocated |");
                     AppendStats(sb);
                     sb.AppendLine();
                 }

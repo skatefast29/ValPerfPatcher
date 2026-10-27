@@ -47,6 +47,7 @@ namespace ValPerfPatcher
         private static int _generation;       // bumped by every save that runs the game's way
         private static Job _job;              // the background save in flight, if any
         private static byte[] _replayBytes;   // handed to GetMapData during our own save
+        private static readonly Stack<Snapshot> _spares = new Stack<Snapshot>(); // copies not in use
         private static Snapshot _last;        // what the last background save packed ...
         private static byte[] _lastBytes;     // ... and its bytes
         private static byte[] _buffer;        // packing buffer, reused (one job at a time)
@@ -242,6 +243,7 @@ namespace ValPerfPatcher
             }
             if (_last != null && _lastBytes != null && Same(snap, _last))
             {
+                _spares.Push(snap);
                 _replayBytes = _lastBytes; // nothing changed on the map: save now with the last bytes
                 return true;
             }
@@ -285,15 +287,25 @@ namespace ValPerfPatcher
         private static void UpdatePostfix(Game __instance)
         {
             var job = _job;
-            if (job == null || !job.Done) return;
+            if (job == null)
+            {
+                Prepare();
+                return;
+            }
+            if (!job.Done) return;
             _job = null;
-            if (job.Generation != _generation) return; // a newer save already ran
+            if (job.Generation != _generation) // a newer save already ran
+            {
+                _spares.Push(job.Snap);
+                return;
+            }
             if (job.Error != null || job.Result == null)
             {
                 Disable("packing the map failed (" + (job.Error?.Message ?? "no result") + ")");
                 __instance.SavePlayerProfile(job.SetLogoutPoint); // the game's way
                 return;
             }
+            if (_last != null) _spares.Push(_last);
             _last = job.Snap;
             _lastBytes = job.Result;
             var clock = Stopwatch.StartNew();
@@ -314,8 +326,29 @@ namespace ValPerfPatcher
             _last = null;
             _lastBytes = null;
             _buffer = null;
+            _spares.Clear();
             _replayBytes = null;
         }
+
+        /// <summary>
+        /// Makes the copies and buffers the saves reuse once, when a world is loaded, so a save asks for no new large
+        /// memory: on a big game, a burst of new memory at the save made the garbage collector finish its pass there in
+        /// one long stop (120-140 ms) instead of in slices. Two map copies: the last save's, and one for the next save.
+        /// </summary>
+        private static void Prepare()
+        {
+            if (_buffer != null || _disabled) return;
+            var map = Minimap.instance;
+            if (map == null || Player.m_localPlayer == null) return;
+            int cells = map.m_textureSize * map.m_textureSize;
+            int words = (cells + 31) / 32;
+            _buffer = new byte[4 + 2 * cells + 65536]; // the explored maps and room for the pins
+            if (_checkBuffer == null) _checkBuffer = new byte[65536];
+            while (_spares.Count < 2) _spares.Push(NewSnapshot(words));
+        }
+
+        private static Snapshot NewSnapshot(int words) =>
+            new Snapshot { Explored = new int[words], Others = new int[words], Pins = new List<Pin>() };
 
         private static void Disable(string why)
         {
@@ -332,14 +365,13 @@ namespace ValPerfPatcher
             int size = map.m_textureSize;
             if (explored == null || others == null || explored.Length != size * size || others.Length != size * size)
                 throw new InvalidOperationException("unexpected map size");
-            var snap = new Snapshot
-            {
-                Size = size,
-                Explored = new int[(explored.Length + 31) / 32],
-                Others = new int[(others.Length + 31) / 32],
-                Pins = new List<Pin>(),
-                PublicPosition = ZNet.instance != null && ZNet.instance.IsReferencePositionPublic(),
-            };
+            // A spare copy is reused: never the last save's copy or one a background save is packing.
+            int words = (explored.Length + 31) / 32;
+            var snap = _spares.Count > 0 ? _spares.Pop() : null;
+            if (snap == null || snap.Explored.Length != words) snap = NewSnapshot(words);
+            snap.Size = size;
+            snap.PublicPosition = ZNet.instance != null && ZNet.instance.IsReferencePositionPublic();
+            snap.Pins.Clear();
             explored.CopyTo(snap.Explored, 0);
             others.CopyTo(snap.Others, 0);
             foreach (var p in _pins(map))

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.25
+
+- Character save fix: its map copies and buffers are made once when a world loads and reused, so a save asks for almost no new memory (a burst of new memory at the save made the garbage collector stop the game for 120-150 ms).
+
 ## 1.0.24
 
 - Character save fix: checking the packed map no longer makes about 50 MB of garbage per save (now about 1 MB), which set off a 100-170 ms garbage collection during the save.
