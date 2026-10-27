@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Threading;
@@ -28,8 +29,9 @@ namespace ValPerfPatcher
     /// Every other save (logout, quitting, sleeping, the save command) runs exactly as before, and a pending background
     /// save is then dropped, so an older copy never overwrites a newer save. If anything goes wrong the save is done the
     /// game's way and the fix stays off for the session.
-    /// Before patching, the game's GetMapData is checked to still write the fields in the order analysed, and every packed
-    /// map is read back with the game's own loader on the background thread before it is used.
+    /// Before patching, the game's GetMapData is checked to still write the fields in the order analysed and its packages
+    /// to still be GZip-compressed, and every packed map is read back (unpacked as the game's loader does, piece by piece
+    /// so it makes no garbage) on the background thread before it is used.
     /// </summary>
     internal static class MapSaveFix
     {
@@ -48,6 +50,7 @@ namespace ValPerfPatcher
         private static Snapshot _last;        // what the last background save packed ...
         private static byte[] _lastBytes;     // ... and its bytes
         private static byte[] _buffer;        // packing buffer, reused (one job at a time)
+        private static byte[] _checkBuffer;   // read-back buffer, reused (one job at a time)
         private static bool _disabled;
         private static bool _reported;
 
@@ -92,7 +95,7 @@ namespace ValPerfPatcher
                 AccessTools.Field(typeof(Minimap), "m_exploredOthers")?.FieldType != typeof(BitArray) ||
                 AccessTools.Field(typeof(Minimap), "m_pins")?.FieldType != typeof(List<Minimap.PinData>))
                 return "the game's map fields have changed since this fix was written";
-            var problem = CheckMapFormat();
+            var problem = CheckMapFormat() ?? CheckCompression();
             if (problem != null) return problem;
 
             _explored = AccessTools.FieldRefAccess<Minimap, BitArray>("m_explored");
@@ -146,6 +149,41 @@ namespace ValPerfPatcher
                 own < 0 || shared < own || version < 1)
                 return "the game's map save format has changed since this fix was written";
             _mapVersion = version;
+            return null;
+        }
+
+        /// <summary>
+        /// The packed map is compressed and checked with GZip, as ZPackage.WriteCompressed (Utils.Compress) and
+        /// ReadCompressedPackage (Utils.Decompress) do; if either uses something else, the fix stands down.
+        /// </summary>
+        private static string CheckCompression()
+        {
+            bool Calls(string method, string utilsMethod)
+            {
+                var m = AccessTools.DeclaredMethod(typeof(ZPackage), method);
+                if (m == null) return false;
+                try
+                {
+                    var calls = PatchProcessor.GetOriginalInstructions(m)
+                        .Select(c => c.operand as MethodInfo).Where(c => c != null && c.DeclaringType == typeof(Utils)).ToList();
+                    return calls.Count == 1 && calls[0].Name == utilsMethod;
+                }
+                catch { return false; }
+            }
+            bool UsesGZip(string utilsMethod)
+            {
+                var m = AccessTools.DeclaredMethod(typeof(Utils), utilsMethod, new[] { typeof(byte[]) });
+                if (m == null) return false;
+                try
+                {
+                    return PatchProcessor.GetOriginalInstructions(m)
+                        .Any(c => c.opcode == OpCodes.Newobj && c.operand is ConstructorInfo ctor && ctor.DeclaringType == typeof(GZipStream));
+                }
+                catch { return false; }
+            }
+            if (!Calls(nameof(ZPackage.WriteCompressed), "Compress") || !Calls(nameof(ZPackage.ReadCompressedPackage), "Decompress") ||
+                !UsesGZip("Compress") || !UsesGZip("Decompress"))
+                return "the game's map compression has changed since this fix was written";
             return null;
         }
 
@@ -233,7 +271,7 @@ namespace ValPerfPatcher
 
         // This patcher, and measuring tools that only time or record calls (ValPerfMonitor, ValAgentBridge's watches).
         private static bool Ours(string owner) =>
-            owner == Plugin.Guid || owner == EarlyPlugin.Guid ||
+            owner == Plugin.Guid || owner == EarlyPlugin.Guid || owner == SaveTiming.HarmonyId ||
             owner.StartsWith("valheimmods.ValPerfMonitor", StringComparison.Ordinal) ||
             owner == "BarryWhite.ValAgentBridge.watch";
 
@@ -380,16 +418,31 @@ namespace ValPerfPatcher
             WriteInt(result, 4, compressed.Length);
             Buffer.BlockCopy(compressed, 0, result, 8, compressed.Length);
 
-            // Read it back the way the game loads a map (ZPackage.ReadCompressedPackage) and compare with what was meant
-            // to be written; a game update that changes either side then never gets a map it can't read.
-            var check = new ZPackage(result);
-            if (check.ReadInt() != _mapVersion) throw new InvalidDataException("version did not read back");
-            byte[] back = check.ReadCompressedPackage().GetArray();
-            if (back.Length != length) throw new InvalidDataException("map did not read back (length)");
-            for (int i = 0; i < length; i++)
-                if (back[i] != buf[i]) throw new InvalidDataException("map did not read back (byte " + i + ")");
+            // Read it back the way the game loads a map (ZPackage.ReadCompressedPackage: Utils.Decompress, a GZipStream)
+            // and compare with what was meant to be written. Unpacked piece by piece into a small reused buffer: the
+            // game's own loader copies the 8 MB map about five times, and that much garbage at each save made the game
+            // stop for a full garbage collection.
+            if (ReadInt(result, 0) != _mapVersion) throw new InvalidDataException("version did not read back");
+            if (ReadInt(result, 4) != compressed.Length) throw new InvalidDataException("length did not read back");
+            var chunk = _checkBuffer ?? (_checkBuffer = new byte[65536]);
+            int read = 0;
+            using (var gz = new GZipStream(new MemoryStream(result, 8, compressed.Length, false), CompressionMode.Decompress))
+            {
+                int n;
+                while ((n = gz.Read(chunk, 0, chunk.Length)) > 0)
+                {
+                    if (read + n > length) throw new InvalidDataException("map did not read back (too long)");
+                    for (int i = 0; i < n; i++)
+                        if (chunk[i] != buf[read + i]) throw new InvalidDataException("map did not read back (byte " + (read + i) + ")");
+                    read += n;
+                }
+            }
+            if (read != length) throw new InvalidDataException("map did not read back (length)");
             return result;
         }
+
+        private static int ReadInt(byte[] src, int offset) =>
+            src[offset] | (src[offset + 1] << 8) | (src[offset + 2] << 16) | (src[offset + 3] << 24);
 
         // BitArray.CopyTo(int[]): bit i is bit (i % 32) of word i / 32. ZPackage.Write(bool) writes one byte, 0 or 1.
         private static void Expand(int[] words, byte[] dest, int offset, int cells)
@@ -420,13 +473,19 @@ namespace ValPerfPatcher
             byte[] buffer = null;
             byte[] ours = Build(snap, ref buffer);
             double oursMs = clock.Elapsed.TotalMilliseconds;
+            // Garbage of a regular save: the packing buffer is kept from the last one. Rough (other threads allocate too).
+            long before = GC.GetTotalMemory(false);
+            Build(snap, ref buffer);
+            double oursMb = (GC.GetTotalMemory(false) - before) / 1048576.0;
             clock.Restart();
             var saved = _replayBytes;
             _replayBytes = null;
             byte[] game;
+            before = GC.GetTotalMemory(false);
             try { game = (byte[])_getMapData.Invoke(map, null); }
             finally { _replayBytes = saved; }
             double gameMs = clock.Elapsed.TotalMilliseconds;
+            double gameMb = (GC.GetTotalMemory(false) - before) / 1048576.0;
 
             bool sameBytes = ours.Length == game.Length;
             for (int i = 0; sameBytes && i < ours.Length; i++) sameBytes = ours[i] == game[i];
@@ -440,7 +499,8 @@ namespace ValPerfPatcher
             foreach (var w in snap.Explored) explored += CountBits(w);
             return $"payload identical: {samePayload} ({pa.Length:N0} bytes, version {va}/{vb}), compressed bytes identical: {sameBytes} " +
                    $"({ours.Length:N0} / {game.Length:N0}); {snap.Pins.Count} saved pins, {explored:N0} explored pixels; " +
-                   $"copy {copyMs:F1} ms, background pack {oursMs:F0} ms, game's GetMapData {gameMs:F0} ms";
+                   $"copy {copyMs:F1} ms, background pack {oursMs:F0} ms, game's GetMapData {gameMs:F0} ms; " +
+                   $"memory used: background pack about {oursMb:F1} MB, game's GetMapData about {gameMb:F1} MB";
         }
 
         private static int CountBits(int v)

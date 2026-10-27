@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.24
+
+- Character save fix: checking the packed map no longer makes about 50 MB of garbage per save (now about 1 MB), which set off a 100-170 ms garbage collection during the save.
+- Character save fix: steps aside if the game stops using GZip for map data.
+
 ## 1.0.23
 
 - New fix: Creature Level & Loot Control keeps its three map copies (192 MB) only when its level circles are shown.
