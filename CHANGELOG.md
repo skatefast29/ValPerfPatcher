@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.26
+
+- New fix: AzuAutoStore favourite borders and Recycle_N_Reclaim trash borders no longer make garbage every frame while the inventory is open.
+
 ## 1.0.25
 
 - Character save fix: its map copies and buffers are made once when a world loads and reused, so a save asks for almost no new memory (a burst of new memory at the save made the garbage collector stop the game for 120-150 ms).

@@ -31,11 +31,13 @@ namespace ValPerfPatcher
     [BepInDependency(AutomaticFuelSmelterScanFix.TargetGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(MultiUserChestBlockResetFix.TargetGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(QuickStackContainerListFix.TargetGuid, BepInDependency.DependencyFlags.SoftDependency)]
+    [BepInDependency(InventoryBorderFindFix.AutoStoreGuid, BepInDependency.DependencyFlags.SoftDependency)]
+    [BepInDependency(InventoryBorderFindFix.RecycleGuid, BepInDependency.DependencyFlags.SoftDependency)]
     public sealed class Plugin : BaseUnityPlugin
     {
         public const string Guid = "valheimmods.ValPerfPatcher";
         public const string Name = "ValPerfPatcher";
-        public const string Version = "1.0.25";
+        public const string Version = "1.0.26";
 
         private Harmony _harmony;
 
@@ -126,6 +128,14 @@ namespace ValPerfPatcher
             Apply("Quick Stack: forget unloaded containers", QuickStackContainerListFix.TargetGuid,
                 "Quick Stack keeps every container it has seen in a list and only removes one when it is broken, so containers in areas you left (and in earlier world sessions) stay in the list for good and every quick stack or restock walks past them. Remove the unloaded ones just before each search. Same containers found.",
                 () => QuickStackContainerListFix.Apply(harmony));
+
+            Apply("AzuAutoStore: favourite borders without garbage", InventoryBorderFindFix.AutoStoreGuid,
+                "While your inventory is open, AzuAutoStore looks up the favourite border on every slot again each frame with a search that makes garbage (about 35 KB per frame), which leads to garbage collection freezes. Remember which border belongs to each slot instead; the search still runs when a slot is new or rebuilt. Same borders.",
+                () => InventoryBorderFindFix.ApplyAutoStore(harmony));
+
+            Apply("Recycle_N_Reclaim: trash borders without garbage", InventoryBorderFindFix.RecycleGuid,
+                "While your inventory is open, Recycle_N_Reclaim looks up the trash border on every slot again each frame with a search that makes garbage (about 13 KB per frame), which leads to garbage collection freezes. Remember which border belongs to each slot instead; the search still runs when a slot is new or rebuilt. Same borders.",
+                () => InventoryBorderFindFix.ApplyRecycle(harmony));
 
             // Applied by EarlyPlugin before other mods start; bound here so the switches are in this config file.
             Report(EarlyPlugin.VanillaFix,
