@@ -12,35 +12,26 @@ using UnityEngine;
 namespace ValPerfPatcher
 {
     /// <summary>
-    /// World loading with Riverheim. Two parts, each with its own switch:
-    ///
-    /// 1. Head start (Riverheim): Riverheim builds its whole world map (WorldGenerator.Pregenerate, about 6.8 s)
-    ///    when the game sets up the network, after a deliberate 1.5 s pause and the scene load. This starts the
-    ///    same build (Riverheim's own BuildPipeline and Compute) on background threads the moment a world is
-    ///    started from the menu (ZNet.SetServer). Riverheim still runs its own Pregenerate; when it computes its
-    ///    new build for the same world, seed and settings, that waits for the early one and takes its results
-    ///    instead of computing them again. Joining a server: the world only arrives from the server after the
-    ///    scene has loaded, so the build for the world last played on that server (remembered in BepInEx\cache)
-    ///    starts when the server address is set at Join. If the server sends another world, seed or settings,
-    ///    the early build is ignored and Riverheim builds as usual.
-    ///
-    /// 2. Biome map in parallel (base game, with Riverheim): every world load, AltBiomeWorldData.VerifyBiomeData
-    ///    samples the biome and height of 4 million map points one at a time (about 5 s with Riverheim).
-    ///    Riverheim's answers only read the finished map and keep their per-point cache per thread, because the
-    ///    game already asks them from its terrain thread. This fills the same table split across CPU threads.
-    ///    Each point is written by exactly one thread, so the table is identical. Only done when Riverheim is
-    ///    the world's generator and nothing else runs before or after those two lookups; otherwise the game's own loop.
+    /// World loading with Riverheim: head start. Riverheim builds its whole world map (WorldGenerator.Pregenerate,
+    /// about 6.8 s) when the game sets up the network, after a deliberate 1.5 s pause and the scene load. This starts
+    /// the same build (Riverheim's own BuildPipeline and Compute) on background threads the moment a world is started
+    /// from the menu (ZNet.SetServer). Riverheim still runs its own Pregenerate; when it computes its new build for
+    /// the same world, seed and settings, that waits for the early one and takes its results instead of computing
+    /// them again. Joining a server: the world only arrives from the server after the scene has loaded, so the build
+    /// for the world last played on that server (remembered in BepInEx\cache) starts when the server address is set
+    /// at Join. If the server sends another world, seed or settings, the early build is ignored and Riverheim builds
+    /// as usual. The biome map that follows is filled by BiomeMapParallelFix, which uses the lookups found here.
     /// </summary>
     internal static class RiverheimLoadFix
     {
         public const string TargetGuid = "dev.gurebu.riverheim.stable";
-        private const string MonitorPrefix = "valheimmods.ValPerfMonitor"; // its timing probes ignore other threads
+        internal const string MonitorPrefix = "valheimmods.ValPerfMonitor"; // its timing probes ignore other threads
 
         private static ManualLogSource _log;
 
         // ---- Riverheim, found by reflection ------------------------------------------------------
 
-        private static Func<WorldGenerator, object> _getRenderer;   // WorldGeneratorExtensions.GetRenderer
+        internal static Func<WorldGenerator, object> _getRenderer;  // WorldGeneratorExtensions.GetRenderer
         private static Func<World, object> _getSettings;            // WorldExtensions.GetSettings
         private static Func<World, bool> _isCustom;                 // WorldExtensions.IsCustomWorldgen
         private static Func<object, object> _getConfig;             // ConfigManager.GetConfig(WorldSettings)
@@ -48,9 +39,9 @@ namespace ValPerfPatcher
         private static MethodInfo _compute;                         // GeneratorPipeline.Compute(int, object)
         private static FieldInfo _cacheField;                       // GeneratorPipeline.cache: where a build keeps its results
 
-        private static Assembly _riverheim;
+        internal static Assembly _riverheim;
 
-        private static bool Resolve()
+        internal static bool Resolve()
         {
             if (_riverheim != null) return _getRenderer != null;
             foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
@@ -345,147 +336,6 @@ namespace ValPerfPatcher
                 _log.LogWarning($"Riverheim: early build not used ({e.GetType().Name}: {e.Message}); building normally.");
                 return true;
             }
-        }
-
-        // ---- Part 2: biome map in parallel -------------------------------------------------------
-
-        private static MethodInfo _getBiome, _getBiomeHeight, _generatePoints;
-        private static MethodInfo _rendererBiome, _rendererHeight; // ValheimWorldRenderer.GetBiome / GetHeight
-
-        private delegate Heightmap.Biome BiomeAt(float wx, float wy);
-        private delegate float HeightAt(float wx, float wy, out Color mask);
-        private static AccessTools.FieldRef<AltBiomeWorldData, World> _dataWorld;
-        private static bool _reportedStandDown;
-
-        public static string ApplyParallelBiomes(Harmony harmony, ManualLogSource log)
-        {
-            _log = log;
-            if (!Resolve()) return "Riverheim's code has changed since this fix was written";
-            _generatePoints = AccessTools.DeclaredMethod(typeof(AltBiomeWorldData), nameof(AltBiomeWorldData.GenerateBiomePoints), new[] { typeof(World) });
-            _getBiome = AccessTools.DeclaredMethod(typeof(WorldGenerator), nameof(WorldGenerator.GetBiome), new[] { typeof(float), typeof(float), typeof(float), typeof(bool) });
-            _getBiomeHeight = AccessTools.DeclaredMethod(typeof(WorldGenerator), nameof(WorldGenerator.GetBiomeHeight),
-                new[] { typeof(Heightmap.Biome), typeof(float), typeof(float), typeof(Color).MakeByRefType(), typeof(bool), typeof(bool) });
-            var worldField = AccessTools.Field(typeof(AltBiomeWorldData), "m_world");
-            // Size of the game's loop as analysed (Valheim 1.0.17); a different size means the game changed it.
-            int il = _generatePoints?.GetMethodBody()?.GetILAsByteArray()?.Length ?? -1;
-            if (_generatePoints == null || _getBiome == null || _getBiomeHeight == null || worldField?.FieldType != typeof(World) || il != 294)
-                return $"the game's biome map code has changed since this fix was written (size {il})";
-            // What Riverheim's GetBiome / GetBiomeHeight prefixes answer with; asked directly, because finding the
-            // renderer per call goes through a table that locks on every read and makes the threads queue.
-            var rendererType = _riverheim.GetType("Riverheim.Plugin.Rendering.ValheimWorldRenderer", false);
-            _rendererBiome = rendererType?.GetMethod("GetBiome", BindingFlags.Public | BindingFlags.Instance, null, new[] { typeof(float), typeof(float) }, null);
-            _rendererHeight = rendererType?.GetMethod("GetHeight", BindingFlags.Public | BindingFlags.Instance, null,
-                new[] { typeof(float), typeof(float), typeof(Color).MakeByRefType() }, null);
-            if (_rendererBiome?.ReturnType != typeof(Heightmap.Biome) || _rendererHeight?.ReturnType != typeof(float))
-                return "Riverheim's map lookups have changed since this fix was written";
-            _dataWorld = AccessTools.FieldRefAccess<AltBiomeWorldData, World>("m_world");
-            harmony.Patch(_generatePoints, prefix: new HarmonyMethod(typeof(RiverheimLoadFix), nameof(GeneratePointsPrefix)));
-            return null;
-        }
-
-        /// <summary>Why the parallel fill can't be used right now, or null when it can.</summary>
-        private static string ParallelBlocker(WorldGenerator gen)
-        {
-            if (gen == null) return "no world generator";
-            if (_getRenderer(gen) == null) return "the world isn't a Riverheim world";
-            string other = OtherHooks(_getBiome, false) ?? OtherHooks(_getBiomeHeight, false) ?? OtherHooks(_generatePoints, true);
-            return other == null ? null : $"{other} also hooks the biome lookups";
-        }
-
-        // Riverheim (prefixes only) and the monitor's thread-aware probes are expected; anyone else stands this down.
-        // On the two lookups a transpiler is fine too: it rewrites the game's own body, which never runs on a
-        // Riverheim world because Riverheim's prefix answers first (e.g. Valheim Community Patch's biome sector fix).
-        private static string OtherHooks(MethodBase method, bool selfTarget)
-        {
-            var info = Harmony.GetPatchInfo(method);
-            if (info == null) return null;
-            foreach (var p in info.Prefixes)
-                if (!Expected(p.owner, selfTarget, true)) return p.owner;
-            foreach (var list in new[] { info.Postfixes, info.Finalizers })
-                foreach (var p in list)
-                    if (!Expected(p.owner, selfTarget, false)) return p.owner;
-            if (selfTarget)
-                foreach (var p in info.Transpilers)
-                    if (!Expected(p.owner, true, false)) return p.owner;
-            return null;
-        }
-
-        private static bool Expected(string owner, bool selfTarget, bool prefix)
-        {
-            if (owner != null && owner.StartsWith(MonitorPrefix, StringComparison.Ordinal)) return true;
-            if (selfTarget) return owner == Plugin.Guid;
-            return prefix && owner == TargetGuid;
-        }
-
-        // Same as the game's GenerateBiomePoints, rows spread over threads.
-        private static bool GeneratePointsPrefix(World world)
-        {
-            var gen = WorldGenerator.instance;
-            string blocker;
-            try { blocker = ParallelBlocker(gen); }
-            catch (Exception e) { blocker = $"{e.GetType().Name}: {e.Message}"; }
-            if (blocker != null)
-            {
-                if (!_reportedStandDown) _log.LogInfo($"Biome map: filled the usual way ({blocker}).");
-                _reportedStandDown = true;
-                return true;
-            }
-            _reportedStandDown = false;
-
-            BiomeAt biomeAt;
-            HeightAt heightAt;
-            try
-            {
-                var renderer = _getRenderer(gen);
-                biomeAt = (BiomeAt)Delegate.CreateDelegate(typeof(BiomeAt), renderer, _rendererBiome);
-                heightAt = (HeightAt)Delegate.CreateDelegate(typeof(HeightAt), renderer, _rendererHeight);
-            }
-            catch (Exception e)
-            {
-                _log.LogInfo($"Biome map: filled the usual way (Riverheim's map lookups: {e.GetType().Name}: {e.Message}).");
-                return true;
-            }
-
-            const int size = 2048;
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-            var data = new AltBiomeWorldData(size);
-            data.dt = DateTime.Now;
-            var biomes = data.PointBiomes;
-            var heights = data.PointHeights;
-            var ocean = Heightmap.Biome.Ocean.ToBiomeIndex();
-            try
-            {
-                Parallel.For(0, size, i =>
-                {
-                    float wy = AltBiomeWorldData.MapSpaceToWorldSpace(i);
-                    for (int j = 0; j < size; j++)
-                    {
-                        var v = new Vector2 { x = AltBiomeWorldData.MapSpaceToWorldSpace(j), y = wy };
-                        if (v.sqrMagnitude > 110250000f)
-                        {
-                            biomes[j, i] = ocean;
-                            heights[j, i] = -1000f;
-                        }
-                        else
-                        {
-                            // = gen.GetBiome / gen.GetBiomeHeight with only Riverheim's prefixes on them
-                            biomes[j, i] = biomeAt(v.x, v.y).ToBiomeIndex();
-                            heights[j, i] = heightAt(v.x, v.y, out _);
-                        }
-                    }
-                });
-            }
-            catch (Exception e)
-            {
-                var inner = (e as AggregateException)?.InnerException ?? e;
-                _log.LogWarning($"Biome map: parallel fill failed ({inner.GetType().Name}: {inner.Message}); filling it the usual way.");
-                return true;
-            }
-            data.PointsGenerated = true;
-            world.m_biomeData = data;
-            _dataWorld(data) = world;
-            _log.LogInfo($"Biome map: filled on {Environment.ProcessorCount} threads in {sw.Elapsed.TotalSeconds:0.00} s.");
-            return false;
         }
     }
 }

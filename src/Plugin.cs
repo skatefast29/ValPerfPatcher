@@ -24,20 +24,17 @@ namespace ValPerfPatcher
     [BepInDependency(AdventureBackpacksProxyFix.TargetGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(CreatureLevelSectorTextFix.TargetGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(RiverheimLoadFix.TargetGuid, BepInDependency.DependencyFlags.SoftDependency)]
-    [BepInDependency(ComfortTweaksConfigFix.TargetGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(ChebyshevDistanceFix.VcpGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(BetterMapLocationPinsFix.TargetGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(SeasonalWaterCacheFix.SeasonalityGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(AutomaticFuelSmelterScanFix.TargetGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(MultiUserChestBlockResetFix.TargetGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(QuickStackContainerListFix.TargetGuid, BepInDependency.DependencyFlags.SoftDependency)]
-    [BepInDependency(InventoryBorderFindFix.AutoStoreGuid, BepInDependency.DependencyFlags.SoftDependency)]
-    [BepInDependency(InventoryBorderFindFix.RecycleGuid, BepInDependency.DependencyFlags.SoftDependency)]
     public sealed class Plugin : BaseUnityPlugin
     {
         public const string Guid = "valheimmods.ValPerfPatcher";
         public const string Name = "ValPerfPatcher";
-        public const string Version = "1.0.26";
+        public const string Version = "1.0.27";
 
         private Harmony _harmony;
 
@@ -129,14 +126,6 @@ namespace ValPerfPatcher
                 "Quick Stack keeps every container it has seen in a list and only removes one when it is broken, so containers in areas you left (and in earlier world sessions) stay in the list for good and every quick stack or restock walks past them. Remove the unloaded ones just before each search. Same containers found.",
                 () => QuickStackContainerListFix.Apply(harmony));
 
-            Apply("AzuAutoStore: favourite borders without garbage", InventoryBorderFindFix.AutoStoreGuid,
-                "While your inventory is open, AzuAutoStore looks up the favourite border on every slot again each frame with a search that makes garbage (about 35 KB per frame), which leads to garbage collection freezes. Remember which border belongs to each slot instead; the search still runs when a slot is new or rebuilt. Same borders.",
-                () => InventoryBorderFindFix.ApplyAutoStore(harmony));
-
-            Apply("Recycle_N_Reclaim: trash borders without garbage", InventoryBorderFindFix.RecycleGuid,
-                "While your inventory is open, Recycle_N_Reclaim looks up the trash border on every slot again each frame with a search that makes garbage (about 13 KB per frame), which leads to garbage collection freezes. Remember which border belongs to each slot instead; the search still runs when a slot is new or rebuilt. Same borders.",
-                () => InventoryBorderFindFix.ApplyRecycle(harmony));
-
             // Applied by EarlyPlugin before other mods start; bound here so the switches are in this config file.
             Report(EarlyPlugin.VanillaFix,
                 "Startup creates many English translation objects, and each one re-reads all 13 of the game's translation files (every language). Keep the words each file gives per language after the first read and add those instead. Mods' own translation hooks still run.",
@@ -151,7 +140,7 @@ namespace ValPerfPatcher
                 EarlyPlugin.BundleResult);
 
             Report(EarlyPlugin.ConfigFix,
-                "BepInEx rewrites a mod's whole config file after every new setting it adds, so a mod adding hundreds of settings while it starts writes its file hundreds of times (RtD Ocean: about 8.5 s at every startup). Until the main menu has started, hold those saves and write each file once. Same files; saves while playing are not held.",
+                "BepInEx rewrites a mod's whole config file after every new setting it adds, so a mod adding hundreds of settings while it starts writes its file hundreds of times (RtD Ocean: about 8.5 s at every startup); some do it on a world load (Comfort Tweaks: about 260 saves, 1.5 s). Until the main menu has started, and while a world loads until your character appears or your game connects to a server, hold those saves and write each file once. Same files; saves while playing are not held.",
                 EarlyPlugin.ConfigResult);
 
             Apply("Base game: distance check without garbage", null,
@@ -228,6 +217,14 @@ namespace ValPerfPatcher
                 "Mods that bundle CreatureManager (Bestiary, Air Animals, Land Animals and others) rebuild all their creature spawn entries from config every time an area loads (reflection per creature, about 0.35 ms per area with Bestiary). Build them once and reuse them until one of that mod's settings changes.",
                 () => CreatureManagerSpawnFix.Apply(_harmony, Logger));
 
+            Apply("Inventory borders: mod slot lookups without garbage", null,
+                "Mods that draw on inventory slots (AzuAutoStore's favourite borders, Recycle_N_Reclaim's trash borders and others) look their picture up again on every slot each frame while the inventory is open, with a search that makes garbage (about 35 KB and 13 KB per frame for those two), which leads to garbage collection freezes. Remember which child was found under each slot instead; the search still runs when a slot is new or rebuilt. Same results.",
+                () => InventoryBorderFindFix.Apply(_harmony, Logger));
+
+            Apply("Inventory: shared favourites", null,
+                "Quick Stack - Store - Sort - Trash - Restock, AzuAutoStore, AzuExtendedPlayerInventory and other mods with the same favouriting code each read the favourites only at login and then keep their own copy, so starring or unstarring an item through one is not seen by the others until the next login: borders seem stuck, and AzuAutoStore stores a newly starred item. Make all of them use the same favourites, combining what each had. Trash marks stay separate. Not a performance fix.",
+                () => SharedFavoritesFix.Apply(_harmony, Logger));
+
             Apply("Vegetation: no stacked copies in new areas", null,
                 "Some vegetation asks for groups of plants but gives them no spread, so the extra plants of a group land exactly on the first one: invisible copies that cost as much as real ones and stay in the world (RtD Ocean's seaweed, ocean bushes, ocean rocks and land plants: about half of them). In newly generated areas, place one per group instead. Areas already generated are not changed.",
                 () => StackedVegetationFix.Apply(_harmony, Logger));
@@ -236,13 +233,9 @@ namespace ValPerfPatcher
                 "Riverheim builds its whole world map (about 7 s) only after the game has paused and loaded the scene. Start the same build in the background as soon as a world is started from the menu, so it runs during that wait. When joining a server, start the world that server had last time as soon as Join is pressed; it is only used if the server sends the same world and settings. Same world.",
                 () => RiverheimLoadFix.ApplyHeadStart(_harmony, Logger));
 
-            Apply("Riverheim: biome map on all CPU cores", RiverheimLoadFix.TargetGuid,
-                "Every world load the game looks up the biome and height of 4 million map points one by one (about 5 s with Riverheim). Riverheim's lookups are safe to run side by side, so split them across CPU cores. Same map. Only for Riverheim worlds, and only while no other mod hooks those lookups.",
-                () => RiverheimLoadFix.ApplyParallelBiomes(_harmony, Logger));
-
-            Apply("Comfort Tweaks: save its settings once", ComfortTweaksConfigFix.TargetGuid,
-                "On the first world load Comfort Tweaks adds a setting for every comfort piece and fire (about 260), and BepInEx rewrites its whole config file after each one (about 1.5 s). Hold those saves and write the file once at the end. Same file.",
-                () => ComfortTweaksConfigFix.Apply(_harmony));
+            Apply("Base game: biome map on all CPU cores", null,
+                "Every world load the game looks up the biome and height of 4 million map points one by one (about 2.8 s on a normal world, about 5 s with Riverheim). These lookups are safe to run side by side (the game already does so for terrain), so split them across CPU cores. Same map. Only while no other mod hooks those lookups (Riverheim is fine).",
+                () => BiomeMapParallelFix.Apply(_harmony, Logger));
 
             Apply("World: remove stacked mod plants", null,
                 "Off by default: changes the world. Mod vegetation that asks for groups with no spread (RtD Ocean's seaweed and others) left invisible copies exactly on top of plants in areas generated before 'Vegetation: no stacked copies in new areas' (or generated on a server without it), about a third of the seaweed near coasts. When on, the extra copy on a spot is deleted from the world once your game owns that area, one plant stays. Never the game's own plants, pickable plants or anything built.",
@@ -333,6 +326,15 @@ namespace ValPerfPatcher
         // An installed mod's version, for log lines.
         internal static string VersionOf(string guid) =>
             Chainloader.PluginInfos.TryGetValue(guid, out var info) ? info.Metadata.Version.ToString() : "?";
+
+        // The name of the mod a DLL belongs to, for log lines (the DLL's name if it isn't a plugin's).
+        internal static string ModName(Assembly asm)
+        {
+            foreach (var info in Chainloader.PluginInfos.Values)
+                if (info.Instance != null && info.Instance.GetType().Assembly == asm)
+                    return info.Metadata.Name;
+            return asm?.GetName().Name ?? "?";
+        }
 
         // A fix returning this (plus the other mod's name) stands down quietly: that mod already does the same job.
         internal const string AlreadyDone = "already done by ";
