@@ -2,11 +2,12 @@
 
 ## 1.0.27
 
-- Config save fix also holds saves while a world loads, for any mod; replaces the Comfort Tweaks-only fix.
-- Biome map on all CPU cores now works on every world, not only Riverheim worlds (normal world: 2.8 s -> 0.95 s per load).
-- Config save fix writes a held file first when a mod re-reads it, stops holding when the game connects to a server, and ends the startup hold when a world starts loading at the latest (dedicated servers).
 - New fix: mods with the same favouriting code (Quick Stack, AzuAutoStore, AzuExtendedPlayerInventory and others) share one set of favourites, so a star or unstar shows in all of them at once.
-- Inventory border fix works for any mod that looks up slot pictures this way, not only AzuAutoStore and Recycle_N_Reclaim (one setting instead of two).
+- Config save fix also holds saves while a world loads, for any mod (about 450 saves written as 5-7 files); replaces the Comfort Tweaks-only fix.
+- Config save fix stops holding when the game connects to a server, so server settings never reach your files.
+- Config save fix ends its startup hold when a world starts loading at the latest (dedicated servers), and writes a held file first when a mod re-reads it.
+- Biome map on all CPU cores now works on every world, not only Riverheim worlds (normal world: 2.8 s -> 0.95 s per load).
+- Inventory border fix works for every mod that draws on inventory slots, not only AzuAutoStore and Recycle_N_Reclaim (one setting instead of two).
 
 ## 1.0.26
 
