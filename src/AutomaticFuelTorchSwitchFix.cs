@@ -10,8 +10,8 @@ namespace ValPerfPatcher
     /// TIMER. Its torch path (TastyUtils.ToggleFireplaceMode) refuses unless this game already owns the fire's ZDO and
     /// shows "Cannot toggle (not owner)", so on a server only whoever happens to own that fire can switch it. Its smelter
     /// path (ToggleStationOnOff) claims ownership first. This does the same for fires: claim ownership just before the
-    /// owner check, then the mod switches the fire as usual. Stands down if the mod no longer checks ownership there or
-    /// already claims it.
+    /// owner check, then the mod switches the fire as usual. Stands down if the mod no longer checks ownership there,
+    /// already claims it, or (1.6.3 and later) sends the switch to the fire's owner.
     /// </summary>
     internal static class AutomaticFuelTorchSwitchFix
     {
@@ -32,6 +32,9 @@ namespace ValPerfPatcher
             {
                 if (ci.Calls(claim))
                     return Plugin.AlreadyDone + "AutomaticFuel " + Plugin.VersionOf(AutomaticFuelSmelterScanFix.TargetGuid) + " itself (it takes ownership of the fire)";
+                // 1.6.3 and later ask the fire's owner to switch it (AF_CycleFire) instead of refusing.
+                if (ci.operand is MethodInfo m && m.DeclaringType == typeof(ZNetView) && m.Name == nameof(ZNetView.InvokeRPC))
+                    return Plugin.AlreadyDone + "AutomaticFuel " + Plugin.VersionOf(AutomaticFuelSmelterScanFix.TargetGuid) + " itself (it asks the fire's owner to switch it)";
                 if (ci.Calls(isOwner)) checksOwner = true;
             }
             if (!checksOwner)

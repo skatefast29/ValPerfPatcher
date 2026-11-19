@@ -7,81 +7,98 @@ using System.Threading.Tasks;
 using BepInEx;
 using BepInEx.Logging;
 using HarmonyLib;
-using UnityEngine;
 
 namespace ValPerfPatcher
 {
     /// <summary>
-    /// World loading with Riverheim: head start. Riverheim builds its whole world map (WorldGenerator.Pregenerate,
-    /// about 6.8 s) when the game sets up the network, after a deliberate 1.5 s pause and the scene load. This starts
-    /// the same build (Riverheim's own BuildPipeline and Compute) on background threads the moment a world is started
-    /// from the menu (ZNet.SetServer). Riverheim still runs its own Pregenerate; when it computes its new build for
-    /// the same world, seed and settings, that waits for the early one and takes its results instead of computing
-    /// them again. Joining a server: the world only arrives from the server after the scene has loaded, so the build
-    /// for the world last played on that server (remembered in BepInEx\cache) starts when the server address is set
-    /// at Join. If the server sends another world, seed or settings, the early build is ignored and Riverheim builds
-    /// as usual. The biome map that follows is filled by BiomeMapParallelFix, which uses the lookups found here.
+    /// World loading with a Worldhalla world generator (Riverheim 1.3 and later): head start. Worldhalla builds the
+    /// whole world map (Riverheim: about 5.5 s) in WorldGenerator.Pregenerate, when the game sets up the network, after
+    /// a deliberate 1.5 s pause and the scene load. This starts the same build (Worldhalla's own WorldGenerationTask)
+    /// the moment a world is started from the menu (ZNet.SetServer). Worldhalla still runs its own Pregenerate; when it
+    /// starts its build for the same world, generator, seed and settings, it is handed the early one instead, and
+    /// waits for it the way it waits for its own. Joining a server: the world only arrives from the server after the
+    /// scene has loaded, so the build for the world last played on that server (remembered in BepInEx\cache) starts
+    /// when the server address is set at Join. If the server sends another world, generator, seed or settings, the
+    /// early build is dropped and Worldhalla builds as usual. The biome map that follows is filled by
+    /// BiomeMapParallelFix, which uses the lookups found here.
     /// </summary>
     internal static class RiverheimLoadFix
     {
         public const string TargetGuid = "dev.gurebu.riverheim.stable";
+        public const string WorldhallaGuid = "dev.gurebu.worldhalla";
         internal const string MonitorPrefix = "valheimmods.ValPerfMonitor"; // its timing probes ignore other threads
 
         private static ManualLogSource _log;
 
-        // ---- Riverheim, found by reflection ------------------------------------------------------
+        // ---- Worldhalla, found by reflection -----------------------------------------------------
 
-        internal static Func<WorldGenerator, object> _getRenderer;  // WorldGeneratorExtensions.GetRenderer
-        private static Func<World, object> _getSettings;            // WorldExtensions.GetSettings
-        private static Func<World, bool> _isCustom;                 // WorldExtensions.IsCustomWorldgen
-        private static Func<object, object> _getConfig;             // ConfigManager.GetConfig(WorldSettings)
-        private static Func<object> _buildPipeline;                 // RiverheimPlugin.WorldGeneratorPatch.BuildPipeline
-        private static MethodInfo _compute;                         // GeneratorPipeline.Compute(int, object)
-        private static FieldInfo _cacheField;                       // GeneratorPipeline.cache: where a build keeps its results
-
-        internal static Assembly _riverheim;
+        internal static Assembly _worldhalla;
+        internal static Func<WorldGenerator, object> _getState;  // WorldGeneratorExtension.GetState: the world's lookups, or null
+        internal static Type _stateType;                         // WorldStateWrapper
+        private static Func<World, object> _getBinding;          // WorldExtension.GetGenerator
+        private static Type _compatibleBinding;                  // CompatibleGeneratorBinding
+        private static PropertyInfo _bindingGenerator, _bindingSettings, _generatorGuid, _completion;
+        private static MethodInfo _findByGuid, _loadSettings, _saveSettings, _startTask, _cancelTask;
 
         internal static bool Resolve()
         {
-            if (_riverheim != null) return _getRenderer != null;
+            if (_worldhalla != null) return _getState != null;
             foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
-                if (asm.GetName().Name == "Riverheim") { _riverheim = asm; break; }
-            if (_riverheim == null) return false;
+                if (asm.GetName().Name == "Worldhalla") { _worldhalla = asm; break; }
+            if (_worldhalla == null) return false;
             try
             {
                 const BindingFlags PS = BindingFlags.Public | BindingFlags.Static;
-                var genExt = _riverheim.GetType("Riverheim.Plugin.WorldGeneratorExtensions", false);
-                var worldExt = _riverheim.GetType("Riverheim.Plugin.WorldExtensions", false);
-                var getRenderer = genExt?.GetMethod("GetRenderer", PS, null, new[] { typeof(WorldGenerator) }, null);
-                var getSettings = worldExt?.GetMethod("GetSettings", PS, null, new[] { typeof(World) }, null);
-                var isCustom = worldExt?.GetMethod("IsCustomWorldgen", PS, null, new[] { typeof(World) }, null);
-                if (getRenderer == null || getSettings == null || isCustom == null || isCustom.ReturnType != typeof(bool)) return false;
-                _getRenderer = g => getRenderer.Invoke(null, new object[] { g });
-                _getSettings = w => getSettings.Invoke(null, new object[] { w });
-                _isCustom = (Func<World, bool>)Delegate.CreateDelegate(typeof(Func<World, bool>), isCustom);
+                const BindingFlags PI = BindingFlags.Public | BindingFlags.Instance;
+                var genExt = _worldhalla.GetType("Worldhalla.Plugin.Core.Extensions.WorldGeneratorExtension", false);
+                var state = _worldhalla.GetType("Worldhalla.Plugin.Core.WorldStateWrapper", false);
+                var getState = genExt?.GetMethod("GetState", PS, null, new[] { typeof(WorldGenerator) }, null);
+                if (getState == null || state == null || getState.ReturnType != state) return false;
+                _stateType = state;
+                _getState = g => getState.Invoke(null, new object[] { g });
 
                 // Only needed by the head start; missing pieces just turn that part off.
-                var configManager = _riverheim.GetType("Riverheim.Configuration.ConfigManager", false);
-                var getConfig = configManager?.GetMethod("GetConfig", PS, null, new[] { getSettings.ReturnType }, null);
-                var pipelineType = _riverheim.GetType("Riverheim.Pipeline.GeneratorPipeline", false);
-                var patchType = _riverheim.GetType("Riverheim.Plugin.RiverheimPlugin+WorldGeneratorPatch", false);
-                var build = patchType == null ? null : AccessTools.DeclaredMethod(patchType, "BuildPipeline", Type.EmptyTypes);
-                var compute = pipelineType == null ? null : AccessTools.DeclaredMethod(pipelineType, "Compute", new[] { typeof(int), typeof(object) });
-                var cache = pipelineType == null ? null : AccessTools.Field(pipelineType, "cache");
-                if (getConfig != null && build != null && build.IsStatic && build.ReturnType == pipelineType && compute != null &&
-                    cache != null && cache.FieldType.Name == "PipelineCache")
-                {
-                    _getConfig = s => getConfig.Invoke(null, new[] { s });
-                    _buildPipeline = () => build.Invoke(null, null);
-                    _compute = compute;
-                    _cacheField = cache;
-                }
+                var worldExt = _worldhalla.GetType("Worldhalla.Plugin.Core.Extensions.WorldExtension", false);
+                var binding = _worldhalla.GetType("Worldhalla.Plugin.Core.GeneratorBinding", false);
+                var compatible = _worldhalla.GetType("Worldhalla.Plugin.Core.CompatibleGeneratorBinding", false);
+                var registered = _worldhalla.GetType("Worldhalla.Plugin.Core.RegisteredGenerator", false);
+                var registry = _worldhalla.GetType("Worldhalla.Plugin.Core.Registry", false);
+                var settings = _worldhalla.GetType("Worldhalla.API.Settings.ISettings", false);
+                var task = _worldhalla.GetType("Worldhalla.Plugin.Core.WorldGenerationTask", false);
+                if (worldExt == null || binding == null || compatible == null || registered == null || registry == null || settings == null || task == null)
+                    return true;
+                var getBinding = worldExt.GetMethod("GetGenerator", PS, null, new[] { typeof(World) }, null);
+                var genProp = compatible.GetProperty("Generator", PI);
+                var setProp = compatible.GetProperty("GeneratorSettings", PI);
+                var guidProp = registered.GetProperty("Guid", PI);
+                var findByGuid = registry.GetMethod("FindByGuid", PS, null, new[] { typeof(string), registered.MakeByRefType() }, null);
+                var loadSettings = registered.GetMethod("LoadSettings", PI, null, new[] { typeof(byte[]) }, null);
+                var save = settings.GetMethod("SaveToBinaryBlob", Type.EmptyTypes);
+                var start = task.GetMethod("Start", PS, null, new[] { registered, typeof(int), settings }, null);
+                var completion = task.GetProperty("Completion", PI);
+                var cancel = task.GetMethod("Cancel", PI, null, Type.EmptyTypes, null);
+                if (getBinding?.ReturnType != binding || genProp?.PropertyType != registered || setProp?.PropertyType != settings ||
+                    guidProp?.PropertyType != typeof(string) || findByGuid?.ReturnType != typeof(bool) || loadSettings?.ReturnType != settings ||
+                    save?.ReturnType != typeof(byte[]) || start?.ReturnType != task || completion == null ||
+                    !typeof(Task).IsAssignableFrom(completion.PropertyType) || cancel == null)
+                    return true;
+                _getBinding = w => getBinding.Invoke(null, new object[] { w });
+                _compatibleBinding = compatible;
+                _bindingGenerator = genProp;
+                _bindingSettings = setProp;
+                _generatorGuid = guidProp;
+                _findByGuid = findByGuid;
+                _loadSettings = loadSettings;
+                _saveSettings = save;
+                _startTask = start;
+                _completion = completion;
+                _cancelTask = cancel;
                 return true;
             }
             catch (Exception e)
             {
-                _log?.LogDebug($"Riverheim: lookup failed: {e.Message}");
-                _getRenderer = null;
+                _log?.LogDebug($"Worldhalla: lookup failed: {e.Message}");
+                _getState = null;
                 return false;
             }
         }
@@ -94,104 +111,120 @@ namespace ValPerfPatcher
             public string Key;           // remembered server world: the server, and what it must send to use the build
             public string Name;
             public long Uid;
-            public byte[] SettingsBytes;
             public int Seed;
-            public object Settings;
-            public object Pipeline;
-            public Task Task;
+            public object Generator;     // Worldhalla's RegisteredGenerator
+            public object Settings;      // the generator's ISettings (may be null)
+            public byte[] SettingsBytes;
+            public object Task;          // Worldhalla's WorldGenerationTask
+            public System.Diagnostics.Stopwatch Started;
         }
 
         private static Pending _pending;
-        private static World _generating; // the world whose Pregenerate is running
+        private static World _generating;  // the world whose Pregenerate is running
         private static Pending _lastGuess; // the remembered-world build for the last join, until a world load decides on it
+        [ThreadStatic] private static bool _ownStart; // this fix is calling WorldGenerationTask.Start itself
 
-        // Riverheim's own settings serializer (ZPackageExtensions), the one it sends worlds to clients with
-        private static MethodInfo _writeSettings, _readSettings;
         private static string _joinsFile;
         private const int MaxRemembered = 20;
 
         public static string ApplyHeadStart(Harmony harmony, ManualLogSource log)
         {
             _log = log;
-            if (!Resolve()) return "Riverheim's code has changed since this fix was written";
-            if (_buildPipeline == null) return "Riverheim's world builder has changed since this fix was written";
+            if (!Resolve()) return "Worldhalla's code has changed since this fix was written";
+            if (_startTask == null) return "Worldhalla's world builder has changed since this fix was written";
             var setServer = AccessTools.Method(typeof(ZNet), nameof(ZNet.SetServer),
                 new[] { typeof(bool), typeof(bool), typeof(bool), typeof(string), typeof(string), typeof(World) });
             var pregenerate = AccessTools.DeclaredMethod(typeof(WorldGenerator), "Pregenerate", Type.EmptyTypes);
             if (setServer == null || pregenerate == null)
                 return "the game's world start code has changed since this fix was written";
-            if (!HasRiverheimPrefix(pregenerate))
-                return "Riverheim no longer builds its world in WorldGenerator.Pregenerate";
+            if (!HasPrefix(pregenerate, WorldhallaGuid))
+                return "Worldhalla no longer builds its worlds in WorldGenerator.Pregenerate";
 
             harmony.Patch(setServer, postfix: new HarmonyMethod(typeof(RiverheimLoadFix), nameof(SetServerPostfix)));
             harmony.Patch(pregenerate,
                 prefix: new HarmonyMethod(typeof(RiverheimLoadFix), nameof(PregeneratePrefix)) { priority = Priority.First },
                 finalizer: new HarmonyMethod(typeof(RiverheimLoadFix), nameof(PregenerateFinalizer)));
-            harmony.Patch(_compute, prefix: new HarmonyMethod(typeof(RiverheimLoadFix), nameof(ComputePrefix)));
+            harmony.Patch(_startTask, prefix: new HarmonyMethod(typeof(RiverheimLoadFix), nameof(StartTaskPrefix)));
 
             // Joining a server: optional, the hosting part works without it.
-            var ext = _riverheim.GetType("Riverheim.Plugin.ZPackageExtensions", false);
-            var settingsType = _riverheim.GetType("Riverheim.Configuration.WorldSettings", false);
-            _writeSettings = ext == null || settingsType == null ? null : AccessTools.DeclaredMethod(ext, "Write", new[] { typeof(ZPackage), settingsType });
-            _readSettings = ext == null ? null : AccessTools.DeclaredMethod(ext, "ReadWorldSettings", new[] { typeof(ZPackage) });
             var hosts = new[]
             {
                 AccessTools.DeclaredMethod(typeof(ZNet), nameof(ZNet.SetServerHost), new[] { typeof(string) }),
                 AccessTools.DeclaredMethod(typeof(ZNet), nameof(ZNet.SetServerHost), new[] { typeof(ulong) }),
                 AccessTools.DeclaredMethod(typeof(ZNet), nameof(ZNet.SetServerHost), new[] { typeof(string), typeof(int), typeof(OnlineBackendType) }),
             };
-            if (_writeSettings == null || _readSettings == null || _readSettings.ReturnType != settingsType || Array.IndexOf(hosts, null) >= 0)
+            if (Array.IndexOf(hosts, null) >= 0)
             {
-                _log.LogInfo("Riverheim: early build when joining a server is off (Riverheim's or the game's join code has changed); hosting is unaffected.");
+                _log.LogInfo("Worldhalla: early build when joining a server is off (the game's join code has changed); hosting is unaffected.");
                 return null;
             }
-            _joinsFile = Path.Combine(Path.Combine(Paths.CachePath, "ValPerfPatcher"), "riverheim-server-worlds.txt");
+            _joinsFile = Path.Combine(Path.Combine(Paths.CachePath, "ValPerfPatcher"), "worldhalla-server-worlds.txt");
             foreach (var m in hosts)
                 harmony.Patch(m, postfix: new HarmonyMethod(typeof(RiverheimLoadFix), nameof(SetServerHostPostfix)));
             return null;
         }
 
-        private static bool HasRiverheimPrefix(MethodBase method)
+        internal static bool HasPrefix(MethodBase method, string owner)
         {
             var info = Harmony.GetPatchInfo(method);
             if (info == null) return false;
             foreach (var p in info.Prefixes)
-                if (p.owner == TargetGuid) return true;
+                if (p.owner == owner) return true;
             return false;
         }
 
-        // A world is being started as host from the menu: start Riverheim's build now, the way Pregenerate would.
+        private static byte[] Bytes(object settings) =>
+            settings == null ? Array.Empty<byte>() : (byte[])_saveSettings.Invoke(settings, null) ?? Array.Empty<byte>();
+
+        private static bool SameBytes(byte[] a, byte[] b)
+        {
+            if (a.Length != b.Length) return false;
+            for (int i = 0; i < a.Length; i++)
+                if (a[i] != b[i]) return false;
+            return true;
+        }
+
+        private static void Drop(Pending p)
+        {
+            if (p?.Task == null) return;
+            try { _cancelTask.Invoke(p.Task, null); } catch { /* it only stops wasted work */ }
+        }
+
+        private static Task Completion(Pending p) => (Task)_completion.GetValue(p.Task, null);
+
+        // A world is being started as host from the menu: start Worldhalla's build now, the way Pregenerate would.
         private static void SetServerPostfix(bool server, World world)
         {
             try
             {
+                var old = _pending;
                 _pending = null; // a new start replaces any earlier one (e.g. the player went back to the menu)
-                if (!server || world == null || world.m_menu || world.m_seed == 0 || !_isCustom(world)) return;
-                var settings = _getSettings(world);
-                if (settings == null) return;
-                StartBuild(new Pending { World = world, Seed = world.m_seed, Settings = settings }, world.m_name);
+                if (old != null && old != _lastGuess) Drop(old);
+                if (!server || world == null || world.m_menu || world.m_seed == 0) return;
+                var binding = _getBinding(world);
+                if (binding == null || !_compatibleBinding.IsInstanceOfType(binding)) return; // a vanilla world
+                var generator = _bindingGenerator.GetValue(binding, null);
+                if (generator == null) return;
+                var settings = _bindingSettings.GetValue(binding, null);
+                StartBuild(new Pending { World = world, Seed = world.m_seed, Generator = generator, Settings = settings, SettingsBytes = Bytes(settings) }, world.m_name);
             }
             catch (Exception e)
             {
                 _pending = null;
-                _log.LogWarning($"Riverheim: early world build not started ({e.GetType().Name}: {e.Message}); Riverheim builds it at the usual time.");
+                _log.LogWarning($"Worldhalla: early world build not started ({e.GetType().Name}: {e.Message}); it is built at the usual time.");
             }
         }
 
         private static void StartBuild(Pending p, string worldName)
         {
-            var config = _getConfig(p.Settings);
-            var pipeline = _buildPipeline();
-            if (config == null || pipeline == null) return;
-            int seed = p.Seed;
-            p.Pipeline = pipeline;
-            p.Task = Task.Run(() =>
-            {
-                try { _compute.Invoke(pipeline, new object[] { seed, config }); }
-                catch (TargetInvocationException e) when (e.InnerException != null) { throw e.InnerException; }
-            });
+            _ownStart = true;
+            try { p.Task = _startTask.Invoke(null, new[] { p.Generator, p.Seed, p.Settings }); }
+            catch (TargetInvocationException e) when (e.InnerException != null) { throw e.InnerException; }
+            finally { _ownStart = false; }
+            if (p.Task == null) return;
+            p.Started = System.Diagnostics.Stopwatch.StartNew();
             _pending = p;
-            _log.LogInfo($"Riverheim: started building world '{worldName}' early, while the game loads.");
+            _log.LogInfo($"Worldhalla: started building world '{worldName}' ({_generatorGuid.GetValue(p.Generator, null)}) early, while the game loads.");
         }
 
         // Join pressed (the server's address is set): start the world this server had last time.
@@ -204,7 +237,7 @@ namespace ValPerfPatcher
                 if (_pending != null && _pending.World == null) return; // already building for this join
                 // The game retries a failed connection by joining again: keep the build already running for it.
                 var last = _lastGuess;
-                if (last != null && last.Key == key && !last.Task.IsFaulted)
+                if (last != null && last.Key == key && !Completion(last).IsFaulted)
                 {
                     _pending = last;
                     return;
@@ -212,33 +245,32 @@ namespace ValPerfPatcher
                 foreach (var r in ReadRemembered())
                 {
                     if (r[0] != key) continue;
-                    var bytes = Convert.FromBase64String(r[4]);
-                    var settings = _readSettings.Invoke(null, new object[] { new ZPackage(bytes) });
+                    var args = new object[] { r[4], null };
+                    if (!(bool)_findByGuid.Invoke(null, args)) return; // that generator is not installed any more
+                    var bytes = Convert.FromBase64String(r[5]);
                     var p = new Pending
                     {
                         Key = key, Name = r[1], Seed = int.Parse(r[2], CultureInfo.InvariantCulture), Uid = long.Parse(r[3], CultureInfo.InvariantCulture),
-                        SettingsBytes = bytes, Settings = settings,
+                        Generator = args[1], SettingsBytes = bytes, Settings = _loadSettings.Invoke(args[1], new object[] { bytes }),
                     };
                     StartBuild(p, r[1]);
-                    if (_pending == p) _lastGuess = p;
+                    if (_pending == p)
+                    {
+                        if (last != null) Drop(last);
+                        _lastGuess = p;
+                    }
                     return;
                 }
             }
             catch (Exception e)
             {
                 _pending = null;
-                _log.LogWarning($"Riverheim: early world build for this server not started ({e.GetType().Name}: {e.Message}); Riverheim builds it at the usual time.");
+                var inner = (e as TargetInvocationException)?.InnerException ?? e;
+                _log.LogWarning($"Worldhalla: early world build for this server not started ({inner.GetType().Name}: {inner.Message}); it is built at the usual time.");
             }
         }
 
-        private static byte[] SettingsBytes(object settings)
-        {
-            var pkg = new ZPackage();
-            _writeSettings.Invoke(null, new[] { pkg, settings });
-            return pkg.GetArray();
-        }
-
-        // Lines: server \t world name \t seed \t world uid \t Riverheim settings (base64); newest first.
+        // Lines: server \t world name \t seed \t world uid \t generator guid \t settings (base64); newest first.
         private static List<string[]> ReadRemembered()
         {
             var list = new List<string[]>();
@@ -246,7 +278,7 @@ namespace ValPerfPatcher
             foreach (var line in File.ReadAllLines(_joinsFile))
             {
                 var r = line.Split('\t');
-                if (r.Length == 5) list.Add(r);
+                if (r.Length == 6) list.Add(r);
             }
             return list;
         }
@@ -257,11 +289,17 @@ namespace ValPerfPatcher
             if (_joinsFile == null || ZNet.instance == null || ZNet.instance.IsServer()) return;
             try
             {
-                if (world == null || world.m_seed == 0 || !_isCustom(world)) return;
-                var settings = _getSettings(world);
-                if (settings == null) return;
+                if (world == null || world.m_seed == 0) return;
+                var binding = _getBinding(world);
+                if (binding == null || !_compatibleBinding.IsInstanceOfType(binding)) return;
+                var generator = _bindingGenerator.GetValue(binding, null);
+                if (generator == null) return;
                 string key = ZNet.GetServerString();
-                var row = new[] { key, world.m_name, world.m_seed.ToString(CultureInfo.InvariantCulture), world.m_uid.ToString(CultureInfo.InvariantCulture), Convert.ToBase64String(SettingsBytes(settings)) };
+                var row = new[]
+                {
+                    key, world.m_name, world.m_seed.ToString(CultureInfo.InvariantCulture), world.m_uid.ToString(CultureInfo.InvariantCulture),
+                    (string)_generatorGuid.GetValue(generator, null), Convert.ToBase64String(Bytes(_bindingSettings.GetValue(binding, null))),
+                };
                 var list = ReadRemembered();
                 if (list.Count > 0 && string.Join("\t", list[0]) == string.Join("\t", row)) return;
                 list.RemoveAll(r => r[0] == key);
@@ -274,7 +312,7 @@ namespace ValPerfPatcher
             }
             catch (Exception e)
             {
-                _log.LogWarning($"Riverheim: could not remember this server's world ({e.GetType().Name}: {e.Message}).");
+                _log.LogWarning($"Worldhalla: could not remember this server's world ({e.GetType().Name}: {e.Message}).");
             }
         }
 
@@ -287,17 +325,24 @@ namespace ValPerfPatcher
         private static Exception PregenerateFinalizer(Exception __exception)
         {
             _generating = null;
+            var p = _pending;
             _pending = null;
+            if (p != null) // never asked for: this world needed no build (e.g. a vanilla world on a remembered server)
+            {
+                if (p == _lastGuess) _lastGuess = null;
+                Drop(p);
+            }
             return __exception;
         }
 
-        // Riverheim's Pregenerate computes its new build: if the early one is for the same world, seed and
-        // settings, wait for it and give the new build its results instead of computing them again.
-        private static bool ComputePrefix(object __instance, int seed)
+        // Worldhalla's Pregenerate starts its build: if the early one is for the same world, generator, seed and
+        // settings, hand it that one instead (Worldhalla then waits for it, answering pings as usual).
+        private static bool StartTaskPrefix(object generator, int seed, object settings, ref object __result)
         {
+            if (_ownStart) return true; // the early build itself
             var p = _pending;
             var world = _generating;
-            if (p == null || world == null || ReferenceEquals(__instance, p.Pipeline)) return true; // the early build itself
+            if (p == null || world == null) return true; // not a world load (e.g. Worldhalla's world preview)
             _pending = null;
             _lastGuess = null; // used or not, a build is never handed out twice
             try
@@ -305,35 +350,43 @@ namespace ValPerfPatcher
                 bool sameWorld = p.World != null
                     ? ReferenceEquals(p.World, world)
                     : p.Name == world.m_name && p.Uid == world.m_uid;
-                if (!sameWorld || p.Seed != world.m_seed || seed != p.Seed)
+                if (!sameWorld || !ReferenceEquals(p.Generator, generator) || p.Seed != world.m_seed || seed != p.Seed)
                 {
-                    _log.LogInfo("Riverheim: the early build was for another world; building normally.");
+                    _log.LogInfo("Worldhalla: the early build was for another world; building normally.");
+                    Drop(p);
                     return true;
                 }
-                var settings = _getSettings(world);
-                bool sameSettings = p.World != null
-                    ? ReferenceEquals(settings, p.Settings) || Equals(settings, p.Settings)
-                    : settings != null && Convert.ToBase64String(SettingsBytes(settings)) == Convert.ToBase64String(p.SettingsBytes);
-                if (!sameSettings)
+                if (!ReferenceEquals(settings, p.Settings) && !SameBytes(Bytes(settings), p.SettingsBytes))
                 {
-                    _log.LogInfo("Riverheim: world settings changed after the early build started; building normally.");
+                    _log.LogInfo("Worldhalla: world settings changed after the early build started; building normally.");
+                    Drop(p);
                     return true;
                 }
-                var sw = System.Diagnostics.Stopwatch.StartNew();
-                try { p.Task.Wait(); }
-                catch (AggregateException e)
+                var done = Completion(p);
+                if (done.IsFaulted || done.IsCanceled)
                 {
-                    var inner = e.InnerException ?? e;
-                    _log.LogWarning($"Riverheim: early build failed ({inner.GetType().Name}: {inner.Message}); building normally.");
+                    var inner = done.Exception?.InnerException;
+                    _log.LogWarning($"Worldhalla: early build failed ({(inner == null ? "cancelled" : inner.GetType().Name + ": " + inner.Message)}); building normally.");
                     return true;
                 }
-                _cacheField.SetValue(__instance, _cacheField.GetValue(p.Pipeline));
-                _log.LogInfo($"Riverheim: early build used (waited {sw.Elapsed.TotalSeconds:0.0} s for the rest).");
+                __result = p.Task;
+                if (done.IsCompleted)
+                    _log.LogInfo($"Worldhalla: early build used (it was already finished, {p.Started.Elapsed.TotalSeconds:0.0} s after it started).");
+                else
+                {
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+                    var log = _log;
+                    done.ContinueWith(t => log.LogInfo(t.Status == TaskStatus.RanToCompletion
+                        ? $"Worldhalla: early build used (the world load waited {sw.Elapsed.TotalSeconds:0.0} s for the rest)."
+                        : "Worldhalla: early build failed after it was handed over; the world generator reports the error."));
+                }
                 return false;
             }
             catch (Exception e)
             {
-                _log.LogWarning($"Riverheim: early build not used ({e.GetType().Name}: {e.Message}); building normally.");
+                var inner = (e as TargetInvocationException)?.InnerException ?? e;
+                _log.LogWarning($"Worldhalla: early build not used ({inner.GetType().Name}: {inner.Message}); building normally.");
+                Drop(p);
                 return true;
             }
         }

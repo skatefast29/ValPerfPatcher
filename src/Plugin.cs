@@ -24,6 +24,7 @@ namespace ValPerfPatcher
     [BepInDependency(AdventureBackpacksProxyFix.TargetGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(CreatureLevelSectorTextFix.TargetGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(RiverheimLoadFix.TargetGuid, BepInDependency.DependencyFlags.SoftDependency)]
+    [BepInDependency(RiverheimLoadFix.WorldhallaGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(ChebyshevDistanceFix.VcpGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(BetterMapLocationPinsFix.TargetGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(SeasonalWaterCacheFix.SeasonalityGuid, BepInDependency.DependencyFlags.SoftDependency)]
@@ -34,7 +35,7 @@ namespace ValPerfPatcher
     {
         public const string Guid = "valheimmods.ValPerfPatcher";
         public const string Name = "ValPerfPatcher";
-        public const string Version = "1.0.27";
+        public const string Version = "1.0.28";
 
         private Harmony _harmony;
 
@@ -170,6 +171,10 @@ namespace ValPerfPatcher
                 "Every character save packs the whole explored map one pixel at a time and compresses it, freezing the game for about a tenth of a second. A server makes every player save on its 30-minute world save, and each game also saves on its own 30-minute timer. For those two saves the map is copied in about a millisecond and packed on another CPU thread into exactly the same data, and the save finishes a moment later; if the map hasn't changed since the last save, the last data is used again. Logging out, quitting, sleeping and the save command save the game's way, as before. Only the character file is involved, never the world.",
                 () => MapSaveFix.Apply(harmony, Logger));
 
+            Apply("Base game: world save without the full copy", null,
+                "Before every world save (every 30 minutes on a server, and on a host's game) the game copies the data of every object in the world, though it only writes the areas that changed since the last save (often none). With a million objects that froze a server for a quarter to two thirds of a second each time, for every player. Copy only the objects that are about to be written: the same data goes into the same files. Mostly matters on a server or when hosting.",
+                () => WorldSaveCopyFix.Apply(harmony, Logger));
+
             var floatStep = Config.Bind("Base game", "Floating object sync step cm", 5f,
                 new ConfigDescription("How far a floating crate, log or dropped item you own must move from where it was last sent before it is sent again. 0 = every change, as the game does.", new AcceptableValueRange<float>(0f, 50f)));
             FloatingSyncDeadbandFix.PositionStep = floatStep.Value / 100f;
@@ -185,6 +190,10 @@ namespace ValPerfPatcher
             Apply("Base game: hide fish stuck in the air", null,
                 "With other players around, fish can hang in the air above the water: a fish nobody was near stays where it was (often mid-jump), and when players come back it is handed to one of them, whose game may take a while to load it, while everyone else's game already shows it. Common when sailing together. On your game, a fish another player's game owns that has not moved for 3 seconds and is clearly above the water, not lying on anything, is not drawn until it moves again. Your own fish, moving or jumping fish, and fish lying on the shore or a deck always show. Only what you see changes.",
                 () => StuckFishHideFix.Apply(harmony));
+
+            Apply("Base game: hide sea creatures stuck above the water", null,
+                "The same as for fish, for sea creatures (serpents, sharks, dolphins, whales, squid... from the game or any mod): one nobody was near stays where it was, often on a wave or mid-jump, and when players come back the game handed it to may take a while to load it, while everyone else's game already shows it floating above the water. Common in the distance with a large simulation distance. On your game, a sea creature another player's game owns that has not moved for 3 seconds and is clearly higher than it swims is not drawn until it moves again. Your own creatures, moving ones and ones at their swimming depth always show. Only what you see changes.",
+                () => StuckSeaCreatureHideFix.Apply(harmony));
 
             var snowCap = Config.Bind("Snow", "Snow cap percent", 10f,
                 new ConfigDescription("How tall snow on capped pieces may get, as a share of the game's full snow height. 100 = no cap, 0 = no snow on capped pieces. " +
@@ -208,6 +217,12 @@ namespace ValPerfPatcher
             Apply("Base game: snow cap on objects", null,
                 "The game's snow on pieces can grow about 1.3 m tall. On roofs and walls that looks right, but on small objects (beehives, smelters, kilns) it becomes a tall pillar, and Seasonality's 'Add Snow' brings every unroofed piece to full in winter. Draw snow on objects at most 'Snow cap percent' tall (settings under Snow); building parts keep the game's snow, and the Deep North is left as the game draws it unless 'Cap Deep North too' is on. Only what you see changes.",
                 () => SnowCapFix.Apply(harmony));
+
+            // In Awake, not Start: a dedicated server starts its world from FejdStartup.Awake (ParseServerArguments),
+            // before plugins' Start runs. Worldhalla is a soft dependency, so it has already loaded and patched.
+            Apply("Riverheim: start building the world early", RiverheimLoadFix.WorldhallaGuid,
+                "Riverheim (through Worldhalla, which also runs other world generators) builds its whole world map (about 5.5 s) only after the game has paused and loaded the scene. Start the same build in the background as soon as a world is started from the menu or a dedicated server starts, so it runs during that wait. When joining a server, start the world that server had last time as soon as Join is pressed; it is only used if the server sends the same world, generator and settings. Same world.",
+                () => RiverheimLoadFix.ApplyHeadStart(harmony, Logger));
         }
 
         // After every plugin's Awake: fixes for code bundled into mods that may load after this one.
@@ -229,12 +244,8 @@ namespace ValPerfPatcher
                 "Some vegetation asks for groups of plants but gives them no spread, so the extra plants of a group land exactly on the first one: invisible copies that cost as much as real ones and stay in the world (RtD Ocean's seaweed, ocean bushes, ocean rocks and land plants: about half of them). In newly generated areas, place one per group instead. Areas already generated are not changed.",
                 () => StackedVegetationFix.Apply(_harmony, Logger));
 
-            Apply("Riverheim: start building the world early", RiverheimLoadFix.TargetGuid,
-                "Riverheim builds its whole world map (about 7 s) only after the game has paused and loaded the scene. Start the same build in the background as soon as a world is started from the menu, so it runs during that wait. When joining a server, start the world that server had last time as soon as Join is pressed; it is only used if the server sends the same world and settings. Same world.",
-                () => RiverheimLoadFix.ApplyHeadStart(_harmony, Logger));
-
             Apply("Base game: biome map on all CPU cores", null,
-                "Every world load the game looks up the biome and height of 4 million map points one by one (about 2.8 s on a normal world, about 5 s with Riverheim). These lookups are safe to run side by side (the game already does so for terrain), so split them across CPU cores. Same map. Only while no other mod hooks those lookups (Riverheim is fine).",
+                "Every world load the game looks up the biome and height of 4 million map points one by one (about 2.8 s on a normal world, about 5 s with Riverheim). These lookups are safe to run side by side (the game already does so for terrain), so split them across CPU cores. Same map. Only while no other mod hooks those lookups (Worldhalla, which Riverheim runs on, is fine).",
                 () => BiomeMapParallelFix.Apply(_harmony, Logger));
 
             Apply("World: remove stacked mod plants", null,

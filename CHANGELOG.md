@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.28
+
+- Early world build works again with Riverheim 1.3 (now built through Worldhalla), for hosting and joining.
+- Early world build now also starts on a dedicated server (it was set up too late there).
+- Biome map on all CPU cores works again on Riverheim 1.3 worlds, and on normal worlds with Riverheim installed.
+- Riverheim world load: 19.5 s -> 14.2 s until the player spawns.
+- New fix: world save copies only the objects being written, not the whole world (server stall on each 30-minute save: 250-680 ms -> about 10 ms).
+- New fix: sea creatures stuck above the water in multiplayer are hidden until they move again, like stuck fish.
+- AutomaticFuel torch switch fix steps aside on AutomaticFuel 1.6.3 and later, which fixes it itself.
+
 ## 1.0.27
 
 - New fix: mods with the same favouriting code (Quick Stack, AzuAutoStore, AzuExtendedPlayerInventory and others) share one set of favourites, so a star or unstar shows in all of them at once.

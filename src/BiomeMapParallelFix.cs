@@ -11,19 +11,20 @@ namespace ValPerfPatcher
     /// Valheim itself. Every world load, AltBiomeWorldData.VerifyBiomeData samples the biome and height of 4 million
     /// map points one at a time (GenerateBiomePoints): about 2.8 s on a normal world, about 5 s with Riverheim. The
     /// game already asks WorldGenerator.GetBiome and GetBiomeHeight from its terrain thread while the game thread asks
-    /// them too, so they are safe side by side (the one shared cache, the river points, is behind a lock); Riverheim's
-    /// answers only read its finished map. This fills the same table split across CPU threads. Each point is written
-    /// by exactly one thread with the same call the game makes, so the table is identical.
-    /// On a Riverheim world Riverheim's own lookups are asked directly (what its prefixes on the two lookups answer
-    /// with), because finding them per call goes through a table that locks on every read. Only done while nothing
-    /// but Riverheim (and ValPerfMonitor's timing probes) runs before, after or inside those lookups; otherwise the
-    /// game's own loop.
+    /// them too, so they are safe side by side (the one shared cache, the river points, is behind a lock); a Worldhalla
+    /// generator's answers (Riverheim) only read its finished map, and Worldhalla's own point cache is per thread.
+    /// This fills the same table split across CPU threads. Each point is written by exactly one thread with the same
+    /// call the game makes, so the table is identical.
+    /// On a Worldhalla world its WorldStateWrapper is asked directly (what Worldhalla's prefixes on the two lookups
+    /// answer with), because finding it per call goes through a table that locks on every read. Only done while
+    /// nothing but Worldhalla (and ValPerfMonitor's timing probes) runs before, after or inside those lookups;
+    /// otherwise the game's own loop.
     /// </summary>
     internal static class BiomeMapParallelFix
     {
         private static ManualLogSource _log;
         private static MethodInfo _getBiome, _getBiomeHeight, _generatePoints;
-        private static MethodInfo _rendererBiome, _rendererHeight; // Riverheim's ValheimWorldRenderer.GetBiome / GetHeight
+        private static MethodInfo _stateBiome, _stateHeight; // Worldhalla's WorldStateWrapper.GetBiome / GetHeight
         private static AccessTools.FieldRef<AltBiomeWorldData, World> _dataWorld;
         private static string _reportedStandDown;
 #if VERIFY_BIOMES
@@ -32,7 +33,7 @@ namespace ValPerfPatcher
 
         private delegate Heightmap.Biome BiomeAt(float wx, float wy);
         private delegate float HeightAt(Heightmap.Biome biome, float wx, float wy);
-        private delegate float RiverheimHeightAt(float wx, float wy, out Color mask);
+        private delegate float StateHeightAt(Heightmap.Biome biome, float wx, float wy, out Color mask);
 
         public static string Apply(Harmony harmony, ManualLogSource log)
         {
@@ -50,45 +51,45 @@ namespace ValPerfPatcher
 
             if (RiverheimLoadFix.Resolve())
             {
-                var rendererType = RiverheimLoadFix._riverheim.GetType("Riverheim.Plugin.Rendering.ValheimWorldRenderer", false);
-                _rendererBiome = rendererType?.GetMethod("GetBiome", BindingFlags.Public | BindingFlags.Instance, null, new[] { typeof(float), typeof(float) }, null);
-                _rendererHeight = rendererType?.GetMethod("GetHeight", BindingFlags.Public | BindingFlags.Instance, null,
-                    new[] { typeof(float), typeof(float), typeof(Color).MakeByRefType() }, null);
-                if (_rendererBiome?.ReturnType != typeof(Heightmap.Biome) || _rendererHeight?.ReturnType != typeof(float))
+                var stateType = RiverheimLoadFix._stateType;
+                _stateBiome = stateType.GetMethod("GetBiome", BindingFlags.Public | BindingFlags.Instance, null, new[] { typeof(float), typeof(float) }, null);
+                _stateHeight = stateType.GetMethod("GetHeight", BindingFlags.Public | BindingFlags.Instance, null,
+                    new[] { typeof(Heightmap.Biome), typeof(float), typeof(float), typeof(Color).MakeByRefType() }, null);
+                if (_stateBiome?.ReturnType != typeof(Heightmap.Biome) || _stateHeight?.ReturnType != typeof(float))
                 {
-                    _rendererBiome = _rendererHeight = null;
-                    log.LogWarning("Biome map: Riverheim's map lookups have changed since this fix was written; Riverheim worlds are filled the usual way.");
+                    _stateBiome = _stateHeight = null;
+                    log.LogWarning("Biome map: Worldhalla's map lookups have changed since this fix was written; Worldhalla worlds (Riverheim) are filled the usual way.");
                 }
             }
-            else if (RiverheimLoadFix._riverheim != null)
-                log.LogWarning("Biome map: Riverheim's code has changed since this fix was written; Riverheim worlds are filled the usual way.");
+            else if (RiverheimLoadFix._worldhalla != null)
+                log.LogWarning("Biome map: Worldhalla's code has changed since this fix was written; Worldhalla worlds (Riverheim) are filled the usual way.");
 
             harmony.Patch(_generatePoints, prefix: new HarmonyMethod(typeof(BiomeMapParallelFix), nameof(GeneratePointsPrefix)));
             return null;
         }
 
         /// <summary>Why the parallel fill can't be used right now, or null when it can.</summary>
-        private static string ParallelBlocker(WorldGenerator gen, out object riverheimRenderer)
+        private static string ParallelBlocker(WorldGenerator gen, out object worldState)
         {
-            riverheimRenderer = null;
+            worldState = null;
             if (gen == null) return "no world generator";
-            if (RiverheimLoadFix._riverheim != null)
+            if (RiverheimLoadFix._worldhalla != null)
             {
-                if (RiverheimLoadFix._getRenderer == null) return "Riverheim's code has changed since this fix was written";
-                riverheimRenderer = RiverheimLoadFix._getRenderer(gen);
-                if (riverheimRenderer != null && _rendererBiome == null) return "Riverheim's map lookups have changed since this fix was written";
+                if (RiverheimLoadFix._getState == null) return "Worldhalla's code has changed since this fix was written";
+                worldState = RiverheimLoadFix._getState(gen);
+                if (worldState != null && _stateBiome == null) return "Worldhalla's map lookups have changed since this fix was written";
             }
-            bool riverheimWorld = riverheimRenderer != null;
-            string other = OtherHooks(_getBiome, riverheimWorld) ?? OtherHooks(_getBiomeHeight, riverheimWorld) ?? OtherHooks(_generatePoints, false, self: true);
+            bool customWorld = worldState != null;
+            string other = OtherHooks(_getBiome, customWorld) ?? OtherHooks(_getBiomeHeight, customWorld) ?? OtherHooks(_generatePoints, false, self: true);
             return other == null ? null : $"{other} also hooks the biome lookups";
         }
 
-        // Expected: ValPerfMonitor's thread-aware probes, Riverheim's prefixes on the two lookups (on a Riverheim world
-        // they answer first; on another world they only find no renderer and step aside, as on the game's terrain
-        // thread), and this fix's own prefix on the loop. On a Riverheim world a transpiler on a lookup is fine too: it
-        // rewrites the game's own body, which never runs there (e.g. an older Valheim Community Patch's biome fix).
-        // Anyone else stands this down: their code would run on these threads.
-        private static string OtherHooks(MethodBase method, bool riverheimWorld, bool self = false)
+        // Expected: ValPerfMonitor's thread-aware probes, Worldhalla's prefixes on the two lookups (on a Worldhalla
+        // world they answer first; on a vanilla world they only find no world state and step aside, as on the game's
+        // terrain thread), and this fix's own prefix on the loop. On a Worldhalla world a transpiler on a lookup is fine
+        // too: it rewrites the game's own body, which never runs there (e.g. an older Valheim Community Patch's biome
+        // fix). Anyone else stands this down: their code would run on these threads.
+        private static string OtherHooks(MethodBase method, bool customWorld, bool self = false)
         {
             var info = Harmony.GetPatchInfo(method);
             if (info == null) return null;
@@ -97,7 +98,7 @@ namespace ValPerfPatcher
             foreach (var list in new[] { info.Postfixes, info.Finalizers })
                 foreach (var p in list)
                     if (!Expected(p.owner, self, false)) return p.owner;
-            if (self || !riverheimWorld)
+            if (self || !customWorld)
                 foreach (var p in info.Transpilers)
                     if (!Expected(p.owner, false, false)) return p.owner;
             return null;
@@ -107,7 +108,7 @@ namespace ValPerfPatcher
         {
             if (owner != null && owner.StartsWith(RiverheimLoadFix.MonitorPrefix, StringComparison.Ordinal)) return true;
             if (self) return owner == Plugin.Guid;
-            return prefix && owner == RiverheimLoadFix.TargetGuid;
+            return prefix && owner == RiverheimLoadFix.WorldhallaGuid;
         }
 
         // Same as the game's GenerateBiomePoints, rows spread over threads.
@@ -118,9 +119,9 @@ namespace ValPerfPatcher
 #endif
             var gen = WorldGenerator.instance;
             string blocker;
-            object renderer;
-            try { blocker = ParallelBlocker(gen, out renderer); }
-            catch (Exception e) { blocker = $"{e.GetType().Name}: {e.Message}"; renderer = null; }
+            object state;
+            try { blocker = ParallelBlocker(gen, out state); }
+            catch (Exception e) { blocker = $"{e.GetType().Name}: {e.Message}"; state = null; }
             if (blocker != null)
             {
                 if (_reportedStandDown != blocker) _log.LogInfo($"Biome map: filled the usual way ({blocker}).");
@@ -133,11 +134,11 @@ namespace ValPerfPatcher
             HeightAt heightAt;
             try
             {
-                if (renderer != null)
+                if (state != null)
                 {
-                    biomeAt = (BiomeAt)Delegate.CreateDelegate(typeof(BiomeAt), renderer, _rendererBiome);
-                    var riverheimHeight = (RiverheimHeightAt)Delegate.CreateDelegate(typeof(RiverheimHeightAt), renderer, _rendererHeight);
-                    heightAt = (biome, x, y) => riverheimHeight(x, y, out _);
+                    biomeAt = (BiomeAt)Delegate.CreateDelegate(typeof(BiomeAt), state, _stateBiome);
+                    var stateHeight = (StateHeightAt)Delegate.CreateDelegate(typeof(StateHeightAt), state, _stateHeight);
+                    heightAt = (biome, x, y) => stateHeight(biome, x, y, out _);
                 }
                 else
                 {
@@ -203,7 +204,7 @@ namespace ValPerfPatcher
             data.PointsGenerated = true;
             world.m_biomeData = data;
             _dataWorld(data) = world;
-            _log.LogInfo($"Biome map: filled on {Environment.ProcessorCount} threads in {seconds:0.00} s ({(renderer != null ? "Riverheim" : "game")} lookups).");
+            _log.LogInfo($"Biome map: filled on {Environment.ProcessorCount} threads in {seconds:0.00} s ({(state != null ? "Worldhalla" : "game")} lookups).");
             return false;
         }
     }
