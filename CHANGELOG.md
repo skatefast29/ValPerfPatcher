@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.32
+
+- Keep data of missing mods: kept location records stay with their own world (a new world created in the same game session no longer gets them).
+
 ## 1.0.31
 
 - New fix: the world keeps the data of missing mods (location records and placed objects) instead of deleting it, until the mod is back. Matters on a server or when hosting.

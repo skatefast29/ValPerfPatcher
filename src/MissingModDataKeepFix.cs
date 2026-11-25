@@ -41,6 +41,7 @@ namespace ValPerfPatcher
         private static AccessTools.FieldRef<ZoneSystem, List<ZoneSystem.LocationInstance>> _saveClone;
         private static readonly List<Kept> KeptLocations = new List<Kept>();
         private static List<Kept> _keptForSave; // snapshot made on the main thread for the save thread
+        private static ZoneSystem _owner;        // the world session the kept records belong to (a new world has no Load)
         private static long _loadStart = -1;
         private static bool _reportedSave;
 
@@ -84,9 +85,10 @@ namespace ValPerfPatcher
             return null;
         }
 
-        private static void LoadPrefix(BinaryReader binaryReader)
+        private static void LoadPrefix(ZoneSystem __instance, BinaryReader binaryReader)
         {
             KeptLocations.Clear();
+            _owner = __instance;
             _keptForSave = null;
             _reportedSave = false;
             var stream = binaryReader?.BaseStream;
@@ -144,7 +146,7 @@ namespace ValPerfPatcher
         // Main thread, just before the save thread runs ZoneSystem.Save.
         private static void PreparePostfix(ZoneSystem __instance)
         {
-            if (KeptLocations.Count == 0) { _keptForSave = null; return; }
+            if (KeptLocations.Count == 0 || !ReferenceEquals(__instance, _owner)) { _keptForSave = null; return; }
             var list = new List<Kept>(KeptLocations.Count);
             foreach (var k in KeptLocations)
                 if (!__instance.m_locationInstances.ContainsKey(ZoneSystem.GetZone(k.Position))) list.Add(k);
