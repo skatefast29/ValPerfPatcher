@@ -2,6 +2,14 @@
 
 Runtime fixes for performance hot spots found with [ValPerfMonitor](https://github.com/skatefast29/ValPerfMonitor). It patches other mods in memory at startup. It never edits their files, and each mod keeps working the same way, minus the wasted work. A few fixes are not speed-ups: the map icon order, shared inventory favourites, BetterMap errors after a relog, and a few that only remove glitches and errors.
 
+## Valheim 1.0.30 compatibility
+Valheim 1.0.30 renamed `SoftReference.Name` to `name`. Mods built before it still ask for `Name` and fail with `MissingMethodException: ... SoftReference`1.get_Name()`:
+- Jotunn 2.30.2: mods adding locations or dungeon rooms through it lose all of them (More World Locations 5.2.4: 194 locations, 69 rooms). On a server or host this also drops those mods' location records from the world on the next save.
+- BetterMap 1.1.0: location pin names fail on every map update.
+- Worldhalla 1.0.1: the location preview in Create World fails.
+
+The patcher in `BepInEx\patchers` (ValPerfPatcher.Preloader.dll) adds `Name` back as another name for `name` before any mod loads. Nothing else changes, and it does nothing once the game has `Name` again. Install ValPerfPatcher on the server too.
+
 ## Fixes
 Each table is sorted by size of gain, biggest first.
 
@@ -43,6 +51,7 @@ Each table is sorted by size of gain, biggest first.
 | Helpers added once after a relog | Seasonality 3.8.4 | On every world load it adds another fall-colour helper to each tree prefab and another frozen-water helper to the area template, and those live for the whole game session: after each logout and login every tree repeats the same colour work once more and every water area gets one more collider and material copy (about 12,700 more objects per relog) | Added only when the prefab has none yet, as on the first world load. |
 | Winter snow on every unroofed piece | Seasonality 3.8.5 | It clears the winter snow from any piece the game thinks has a roof. The game's roof check looks straight up from the piece but also counts the floor the piece stands on when it sits slightly sunk into it, so identical kilns side by side on a stone floor got snow or none by chance | For winter snow only what is really above the piece counts, checked every few seconds instead of every second. The game's own roof check (rain wear, Deep North snow) is unchanged. Not a performance fix. |
 | No error for the planting preview | Farming 2.2.3 | Every seed planted makes the game rebuild the see-through planting preview, and its plant hook then tries to save the farming skill on that preview, which has no save data: one NullReferenceException with a full stack trace per seed (473 in one 2.5 h session), a small stutter each time | Its hook is skipped for objects without save data (the preview); real plants get the skill as before. |
+| No breeding error for creatures that cannot be tamed | Bestiary 1.2.5 (its fox) | The game checks every few seconds whether each creature that can breed is tamed. Bestiary's fox can breed but cannot be tamed, so that check fails: one NullReferenceException with a full stack trace every 30 s for every fox near you (191 in one 2 h session) | Creatures that cannot be tamed are skipped, as only tamed creatures breed anyway; same result, no errors. |
 | Item data added once after a relog | Creature Level & Loot Control 5.0.7 | On every world load it adds another original-item-values record to every item (about 12,500 more objects per relog); it only ever reads the first one | Added only when the item has none yet, as on the first world load. |
 | Forget old inventories | MultiUserChest 0.6.2 | It keeps a slot-block record for every inventory it has seen and never removes one, so every chest it has touched stays in memory with all its items, after the chest unloads and in later world sessions (+5,600 objects in 15 minutes of farming with auto-store) | The list is emptied when a world starts, and while playing the records with nothing blocked are dropped once there are more than 64; the mod makes a fresh record whenever it needs one. |
 | Map copies only when level circles are shown | Creature Level & Loot Control 5.0.7 | On every world load it keeps three copies of the whole map (192 MB for the session) and redraws the map for its distance circles, even when the circles are off | Copies and redraw only while the circles are shown; switching them on later makes the copies then. |

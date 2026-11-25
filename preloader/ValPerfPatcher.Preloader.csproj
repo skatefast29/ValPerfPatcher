@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A BepInEx preloader patcher (goes in BepInEx\patchers): small changes to game assemblies before anything loads them. -->
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>11</LangVersion>
+    <AssemblyName>ValPerfPatcher.Preloader</AssemblyName>
+    <RootNamespace>ValPerfPatcher.Preloader</RootNamespace>
+    <Nullable>disable</Nullable>
+    <Version>1.0.0</Version>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <GaleProfile Condition="'$(GaleProfile)' == ''">$(APPDATA)\com.kesomannen.gale\valheim\profiles\Default</GaleProfile>
+    <BepInExCore>$(GaleProfile)\BepInEx\core</BepInExCore>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="BepInEx" HintPath="$(BepInExCore)\BepInEx.dll" Private="false" />
+    <Reference Include="Mono.Cecil" HintPath="$(BepInExCore)\Mono.Cecil.dll" Private="false" />
+  </ItemGroup>
+
+</Project>

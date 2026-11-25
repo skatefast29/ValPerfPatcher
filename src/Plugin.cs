@@ -35,7 +35,7 @@ namespace ValPerfPatcher
     {
         public const string Guid = "valheimmods.ValPerfPatcher";
         public const string Name = "ValPerfPatcher";
-        public const string Version = "1.0.29";
+        public const string Version = "1.0.30";
 
         private Harmony _harmony;
 
@@ -194,6 +194,10 @@ namespace ValPerfPatcher
             Apply("Base game: hide sea creatures stuck above the water", null,
                 "The same as for fish, for sea creatures (serpents, sharks, dolphins, whales, squid... from the game or any mod): one nobody was near stays where it was, often on a wave or mid-jump, and when players come back the game handed it to may take a while to load it, while everyone else's game already shows it floating above the water. Common in the distance with a large simulation distance. On your game, a sea creature another player's game owns that has not moved for 3 seconds and is clearly higher than it swims is not drawn until it moves again. Your own creatures, moving ones and ones at their swimming depth always show. Only what you see changes.",
                 () => StuckSeaCreatureHideFix.Apply(harmony));
+
+            Apply("Base game: no breeding error for creatures that cannot be tamed", null,
+                "Every few seconds the game checks each creature that can breed, starting with whether it is tamed. Some mod creatures (Bestiary's fox) can breed but cannot be tamed, so that check fails with an error, every 30 s for every such creature near you. Only tamed creatures breed, so these are skipped instead. Same result, no errors.",
+                () => UntameableProcreationFix.Apply(harmony));
 
             var snowCap = Config.Bind("Snow", "Snow cap percent", 10f,
                 new ConfigDescription("How tall snow on capped pieces may get, as a share of the game's full snow height. 100 = no cap, 0 = no snow on capped pieces. " +

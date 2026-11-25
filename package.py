@@ -12,6 +12,7 @@ import zlib
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DLL = os.path.join(ROOT, "bin", "Release", "net48", 'ValPerfPatcher.dll')
+PRELOADER = os.path.join(ROOT, 'preloader', 'bin', 'Release', 'net472', 'ValPerfPatcher.Preloader.dll')
 VERSION = re.search(r'<Version>([^<]+)</Version>', open(os.path.join(ROOT, 'ValPerfPatcher.csproj'), encoding='utf-8').read()).group(1)
 
 
@@ -59,4 +60,5 @@ with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
     z.write(os.path.join(ROOT, 'README.md'), 'README.md')
     z.write(os.path.join(ROOT, 'CHANGELOG.md'), 'CHANGELOG.md')
     z.write(DLL, 'plugins/ValPerfPatcher.dll')
+    z.write(PRELOADER, 'patchers/ValPerfPatcher.Preloader.dll')
 print(out)

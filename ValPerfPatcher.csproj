@@ -6,7 +6,7 @@
     <AssemblyName>ValPerfPatcher</AssemblyName>
     <RootNamespace>ValPerfPatcher</RootNamespace>
     <Nullable>disable</Nullable>
-    <Version>1.0.29</Version>
+    <Version>1.0.30</Version>
     <DebugType>none</DebugType>
   </PropertyGroup>
 
@@ -35,9 +35,21 @@
     <Reference Include="HearthBelow" HintPath="$(HearthBelowDll)" Private="false" />
   </ItemGroup>
 
+  <!-- The preloader patcher is its own small project (BepInEx\patchers: it changes game assemblies before they load). -->
+  <ItemGroup>
+    <Compile Remove="preloader\**" />
+    <None Remove="preloader\**" />
+  </ItemGroup>
+  <Target Name="BuildPreloader" BeforeTargets="BeforeBuild">
+    <MSBuild Projects="preloader\ValPerfPatcher.Preloader.csproj" Targets="Restore" Properties="Configuration=$(Configuration);GaleProfile=$(GaleProfile);RestorePass=1" />
+    <MSBuild Projects="preloader\ValPerfPatcher.Preloader.csproj" Targets="Build" Properties="Configuration=$(Configuration);GaleProfile=$(GaleProfile)" />
+  </Target>
+
   <Target Name="DeployToGale" AfterTargets="Build" Condition="'$(Deploy)' == 'true'">
     <MakeDir Directories="$(Plugins)\ValPerfPatcher" />
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(Plugins)\ValPerfPatcher" />
+    <MakeDir Directories="$(GaleProfile)\BepInEx\patchers\ValPerfPatcher" />
+    <Copy SourceFiles="preloader\bin\$(Configuration)\net472\ValPerfPatcher.Preloader.dll" DestinationFolder="$(GaleProfile)\BepInEx\patchers\ValPerfPatcher" />
   </Target>
 
 </Project>

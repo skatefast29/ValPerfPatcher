@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.30
+
+- Valheim 1.0.30 fix: old mods' SoftReference.Name works again (Jotunn: More World Locations' locations and dungeon rooms register again; BetterMap map pins; Worldhalla location preview). Install on the server too.
+- New fix: no breeding error every 30 s for mod creatures that can breed but cannot be tamed (Bestiary's fox).
+
 ## 1.0.29
 
 - Checked against Valheim 1.0.30 and the latest mod updates: all fixes still apply.
