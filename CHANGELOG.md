@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.29
+
+- Checked against Valheim 1.0.30 and the latest mod updates: all fixes still apply.
+- World save copy fix steps aside for SteadyFrame 1.3.4 and later, which does the same itself.
+
 ## 1.0.28
 
 - Early world build works again with Riverheim 1.3 (now built through Worldhalla), for hosting and joining.

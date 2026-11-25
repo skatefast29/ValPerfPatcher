@@ -22,6 +22,7 @@ namespace ValPerfPatcher
     /// </summary>
     internal static class WorldSaveCopyFix
     {
+        private const string SteadyFrameGuid = "ru.ivest.steadyframe";
         private static ManualLogSource _log;
         private static MethodInfo _prepare;
         private static Action _regenerate;
@@ -120,6 +121,13 @@ namespace ValPerfPatcher
             try
             {
                 blocker = OtherHooks();
+                if (blocker == SteadyFrameGuid)
+                {
+                    // SteadyFrame 1.3.4+ (LeanSaveCopy) makes the same subset copy itself, from its own prefix that runs after this one.
+                    if (_reportedStandDown != blocker) _log.LogInfo("World save: SteadyFrame makes the same small copy itself, so this fix leaves it to SteadyFrame.");
+                    _reportedStandDown = blocker;
+                    return true;
+                }
                 if (blocker != null) blocker += " also hooks it";
                 else
                 {
