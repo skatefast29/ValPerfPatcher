@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.31
+
+- New fix: the world keeps the data of missing mods (location records and placed objects) instead of deleting it, until the mod is back. Matters on a server or when hosting.
+- Clear error at startup when ValPerfPatcher.Preloader.dll is missing from BepInEx\patchers.
+- The Valheim 1.0.30 SoftReference.Name fix also stops BetterMap from breaking players' joins on a server (stuck on a black screen while loading in).
+
 ## 1.0.30
 
 - Valheim 1.0.30 fix: old mods' SoftReference.Name works again (Jotunn: More World Locations' locations and dungeon rooms register again; BetterMap map pins; Worldhalla location preview). Install on the server too.

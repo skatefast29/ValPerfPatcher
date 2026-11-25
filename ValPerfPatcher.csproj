@@ -6,7 +6,7 @@
     <AssemblyName>ValPerfPatcher</AssemblyName>
     <RootNamespace>ValPerfPatcher</RootNamespace>
     <Nullable>disable</Nullable>
-    <Version>1.0.30</Version>
+    <Version>1.0.31</Version>
     <DebugType>none</DebugType>
   </PropertyGroup>
 
@@ -26,6 +26,7 @@
     <Reference Include="assembly_guiutils" HintPath="$(ManagedDir)\assembly_guiutils.dll" Private="false" />
     <Reference Include="assembly_utils" HintPath="$(ManagedDir)\assembly_utils.dll" Private="false" />
     <Reference Include="Splatform" HintPath="$(ManagedDir)\Splatform.dll" Private="false" />
+    <Reference Include="SoftReferenceableAssets" HintPath="$(ManagedDir)\SoftReferenceableAssets.dll" Private="false" />
     <Reference Include="UnityEngine" HintPath="$(ManagedDir)\UnityEngine.dll" Private="false" />
     <Reference Include="UnityEngine.CoreModule" HintPath="$(ManagedDir)\UnityEngine.CoreModule.dll" Private="false" />
     <Reference Include="UnityEngine.AssetBundleModule" HintPath="$(ManagedDir)\UnityEngine.AssetBundleModule.dll" Private="false" />

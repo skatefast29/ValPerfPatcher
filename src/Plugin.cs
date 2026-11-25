@@ -35,13 +35,14 @@ namespace ValPerfPatcher
     {
         public const string Guid = "valheimmods.ValPerfPatcher";
         public const string Name = "ValPerfPatcher";
-        public const string Version = "1.0.30";
+        public const string Version = "1.0.31";
 
         private Harmony _harmony;
 
         private void Awake()
         {
             var harmony = _harmony = new Harmony(Guid);
+            CheckSoftReferenceName();
 
             Apply("HearthBelow: skip idle zone sorting", HearthBelowFix.TargetGuid,
                 "HearthBelow sorts all of its terrain zones every frame, even when none has work queued (~1 KB of garbage per frame). Skip the sort and the empty zone loop on those frames; its distant-terrain and visibility updates still run every frame.",
@@ -174,6 +175,10 @@ namespace ValPerfPatcher
             Apply("Base game: world save without the full copy", null,
                 "Before every world save (every 30 minutes on a server, and on a host's game) the game copies the data of every object in the world, though it only writes the areas that changed since the last save (often none). With a million objects that froze a server for a quarter to two thirds of a second each time, for every player. Copy only the objects that are about to be written: the same data goes into the same files. Mostly matters on a server or when hosting.",
                 () => WorldSaveCopyFix.Apply(harmony, Logger));
+
+            Apply("World: keep data of missing mods", null,
+                "When a mod that adds locations or objects is missing or fails to load (removed, or broken by a game update), the game deletes its data from the world for good: location records not visited yet are dropped on the next save, and its objects are deleted as soon as a player comes near. Keep both, untouched, until the mod is back. Matters on a server or when hosting. Turn off for one session only if you removed a mod for good and want the game to clean up what it left.",
+                () => MissingModDataKeepFix.Apply(harmony, Logger));
 
             var floatStep = Config.Bind("Base game", "Floating object sync step cm", 5f,
                 new ConfigDescription("How far a floating crate, log or dropped item you own must move from where it was last sent before it is sent again. 0 = every change, as the game does.", new AcceptableValueRange<float>(0f, 50f)));
@@ -355,6 +360,21 @@ namespace ValPerfPatcher
         internal const string AlreadyDone = "already done by ";
         // A fix returning this (plus why) stands down quietly: a second mod it needs is not installed.
         internal const string NotNeeded = "not needed: ";
+
+        // Valheim 1.0.30 renamed SoftReference.Name to name; ValPerfPatcher.Preloader (BepInEx\patchers) adds Name back
+        // for mods built before that (Jotunn 2.30.2: More World Locations' locations and rooms). Say so loudly if it is missing.
+        private void CheckSoftReferenceName()
+        {
+            try
+            {
+                var type = typeof(SoftReferenceableAssets.SoftReference<UnityEngine.GameObject>);
+                if (type.GetProperty("Name") != null || type.GetProperty("name") == null) return;
+                Logger.LogError("ValPerfPatcher.Preloader.dll is missing from BepInEx\\patchers (only the plugin is installed). " +
+                                "Mods built before Valheim 1.0.30 that use SoftReference.Name will fail: Jotunn then registers no More World Locations " +
+                                "locations or dungeon rooms. Install the whole ValPerfPatcher package (plugins and patchers folders), especially on a server.");
+            }
+            catch (Exception) { }
+        }
 
         private void Apply(string name, string targetGuid, string description, Func<string> apply, bool defaultOn = true)
         {
