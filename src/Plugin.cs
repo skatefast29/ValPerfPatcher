@@ -35,7 +35,7 @@ namespace ValPerfPatcher
     {
         public const string Guid = "valheimmods.ValPerfPatcher";
         public const string Name = "ValPerfPatcher";
-        public const string Version = "1.0.32";
+        public const string Version = "1.0.33";
 
         private Harmony _harmony;
 
@@ -184,8 +184,12 @@ namespace ValPerfPatcher
                 new ConfigDescription("How far a floating crate, log or dropped item you own must move from where it was last sent before it is sent again. 0 = every change, as the game does.", new AcceptableValueRange<float>(0f, 50f)));
             FloatingSyncDeadbandFix.PositionStep = floatStep.Value / 100f;
             floatStep.SettingChanged += (_, __) => FloatingSyncDeadbandFix.PositionStep = floatStep.Value / 100f;
+            var floatRate = Config.Bind("Base game", "Floating object updates per second", 5f,
+                new ConfigDescription("At most how often a floating crate, log or dropped item you own is sent again while it bobs on waves (a sudden move of over 1 m or 20 degrees still goes at once). 0 = no limit, only the step above.", new AcceptableValueRange<float>(0f, 30f)));
+            FloatingSyncDeadbandFix.UpdatesPerSecond = floatRate.Value;
+            floatRate.SettingChanged += (_, __) => FloatingSyncDeadbandFix.UpdatesPerSecond = floatRate.Value;
             Apply("Base game: floating objects sent less often", null,
-                "Crates, logs and dropped items floating in water move a little on every frame, and the game sends each one to the server again every time (20-26 times a second each; a dozen floating crates near a base were about 60 KB/s of upload for one player). Send one again only once it has moved 'Floating object sync step cm' (under Base game), turned 2 degrees or changed speed by 0.1 m/s from what was last sent. Creatures, ships, carts and fish are not affected.",
+                "Crates, logs and dropped items floating in water move a little on every frame, and the game sends each one to the server again every time (20-26 times a second each; a dozen floating crates near a base were about 60 KB/s of upload for one player). Send one again only once it has moved 'Floating object sync step cm' (under Base game), turned 2 degrees or changed speed by 0.1 m/s from what was last sent, and at most 'Floating object updates per second' times a second while it bobs on waves. Creatures, ships, carts and fish are not affected.",
                 () => FloatingSyncDeadbandFix.Apply(harmony, Logger));
 
             Apply("Base game: creature walk and turn speeds sent less often", null,

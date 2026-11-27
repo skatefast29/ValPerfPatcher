@@ -48,7 +48,7 @@ manifest = {
     "name": "ValPerfPatcher",
     "version_number": VERSION,
     "website_url": "https://github.com/skatefast29/ValPerfPatcher",
-    "description": "Runtime fixes for performance hot spots in popular mods and the base game (less garbage, faster startup and world loading), found with ValPerfMonitor. Also keeps other players' icons on top of the map.",
+    "description": "Performance and bug fixes for popular mods and Valheim itself: less garbage, faster startup and world loading, shorter save freezes. Found with ValPerfMonitor.",
     "dependencies": ["denikson-BepInExPack_Valheim-5.4.2351"],
 }
 

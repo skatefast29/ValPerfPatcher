@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.33
+
+- Floating objects fix: crates, logs and items bobbing on waves are sent at most 5 times a second (new setting `Floating object updates per second`).
+
 ## 1.0.32
 
 - Keep data of missing mods: kept location records stay with their own world (a new world created in the same game session no longer gets them).
